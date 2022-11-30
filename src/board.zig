@@ -8,7 +8,7 @@ const Orientation = enum {
     Vertical,
 };
 
-const Move = struct { pos: u8, step: i8 };
+pub const Move = struct { pos: u8, step: i8 };
 
 const ParseError = error{
     IllegalBoardDimensions,
@@ -96,7 +96,7 @@ pub const Board = struct {
                 Orientation.Vertical => vert_patterns[i % self.width] = ~vert_patterns[i % self.width],
             }
 
-            const size = switch (o) {
+            const sz = switch (o) {
                 Orientation.Horizontal => blk: {
                     const lim = self.width - i % self.width;
                     var j: u8 = 0;
@@ -125,11 +125,11 @@ pub const Board = struct {
                 },
             };
 
-            if (size < 2 or size > 3) {
+            if (sz < 2 or sz > 3) {
                 return error.IllegalCarSize;
             }
 
-            std.debug.print("Parsed {} car '{c}' at position (x: {}, y: {}) with size {}\n", .{ o, c, i % self.width, i / self.width, size });
+            std.debug.print("Parsed {} car '{c}' at position (x: {}, y: {}) with size {}\n", .{ o, c, i % self.width, i / self.width, sz });
 
             if (c == 'A') {
                 seen_goal_car = true;
@@ -148,8 +148,88 @@ pub const Board = struct {
         std.debug.print("Resulting Board: {any} with size {}\n", .{ self, std.fmt.fmtIntSizeBin(@sizeOf(Board)) });
     }
 
-    // fn do_move(self: *Board, move: Move) error{IllegalMove}!void {}
-    // fn undo_move(self: *Board, move: Move) error{IllegalMove}!void {}
+    fn size(self: *Self) u8 {
+        return @as(u8, self.width) * self.height;
+    }
+
+    fn car_orientation_at(self: *Self, pos: u8) Orientation {
+        return if (self.vertical_mask.get(pos).occupied) Orientation.Vertical else Orientation.Horizontal;
+    }
+
+    fn car_size_at(self: *Self, pos: u8) usize {
+        const o = self.car_orientation_at(pos);
+        var sz: usize = 0;
+        const mask = switch (o) {
+            Orientation.Vertical => &self.vertical_mask,
+            Orientation.Horizontal => &self.horizontal_mask,
+        };
+        const offset = switch (o) {
+            Orientation.Vertical => self.width,
+            Orientation.Horizontal => 1,
+        };
+
+        var c = pos;
+        const pattern = mask.get(pos).pattern;
+        while (mask.get(c).pattern == pattern) {
+            sz += 1;
+            c += offset;
+        }
+
+        return sz;
+    }
+
+    fn offset_position(self: *Self, pos: u8, step: i8, o: Orientation) ?u8 {
+        if (pos >= self.size()) return null;
+
+        const offset: i16 = switch (o) {
+            Orientation.Vertical => self.width,
+            Orientation.Horizontal => 1,
+        };
+
+        if (pos + offset * step < 0 or pos + offset * step >= self.size()) return null;
+        return @intCast(u8, pos + offset * step);
+    }
+
+    pub fn do_move(self: *Self, move: Move) void {
+        const o = self.car_orientation_at(move.pos);
+        const sz = self.car_size_at(move.pos);
+        const mask = switch (o) {
+            Orientation.Vertical => &self.vertical_mask,
+            Orientation.Horizontal => &self.horizontal_mask,
+        };
+
+        var pos = move.pos;
+        const target = self.offset_position(move.pos, move.step, o);
+        const sign = std.math.sign(move.step);
+        while (pos != target) : (pos = self.offset_position(pos, sign, o).?) {
+            const source = switch (sign) {
+                1 => pos,
+                -1 => self.offset_position(pos, @intCast(i8, sz - 1), o),
+                else => unreachable,
+            };
+
+            const destination = switch (sign) {
+                1 => self.offset_position(pos, @intCast(i8, sz), o),
+                -1 => self.offset_position(pos, -1, o),
+                else => unreachable,
+            };
+
+            mask.set(destination.?, mask.get(source.?));
+            mask.set(source.?, .{ .occupied = false });
+        }
+    }
+
+    pub fn undo_move(self: *Board, move: Move) void {
+        const t = self.offset_position(move.pos, move.step, Orientation.Vertical);
+        const o = if (self.car_orientation_at(t.?) == Orientation.Vertical) Orientation.Vertical else Orientation.Horizontal;
+
+        const reverse: Move = .{
+            .pos = self.offset_position(move.pos, move.step, o).?,
+            .step = -move.step,
+        };
+
+        self.do_move(reverse);
+    }
 
     // fn reached_goal(self: *Board) bool {}
 
