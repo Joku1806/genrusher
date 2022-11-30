@@ -23,6 +23,8 @@ const Field = packed struct {
 };
 
 pub const Board = struct {
+    const Self = @This();
+
     // TODO: check viability of ArrayBitSet
     // NOTE: It is very unlikely that we want to solve a board larger than 8x8, so we use an array with static size of 64.
     horizontal_mask: PackedIntArray(Field, 64),
@@ -41,7 +43,21 @@ pub const Board = struct {
         };
     }
 
-    pub fn read_from_file(self: *Board, path: []const u8) (File.OpenError || std.mem.Allocator.Error || ParseError || error{BrokenPipe} ||
+    fn determine_board_dimensions(self: *Self, contents: []u8) error{IllegalBoardDimensions}!void {
+        const lim: usize = std.math.maxInt(u4);
+        const height: usize = std.mem.count(u8, contents, "\n");
+
+        if (height > lim) return error.IllegalBoardDimensions;
+        if ((contents.len - height) % height != 0) return error.IllegalBoardDimensions;
+        const width: usize = (contents.len - height) / height; // subtract height because of newlines
+
+        if (width * height > 64) return error.IllegalBoardDimensions;
+
+        self.width = @intCast(u4, width);
+        self.height = @intCast(u4, height);
+    }
+
+    pub fn read_from_file(self: *Self, path: []const u8) (File.OpenError || std.mem.Allocator.Error || ParseError || error{BrokenPipe} ||
         error{ConnectionResetByPeer} ||
         error{ConnectionTimedOut} ||
         error{InputOutput} ||
@@ -55,25 +71,14 @@ pub const Board = struct {
 
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
-
         const allocator = arena.allocator();
 
-        // TODO: Fixed Size Buffer statt Allocator benutzen
-        // FIXME: Vulnerable to bad input + ugly
-        const board_string = try file.readToEndAlloc(allocator, 128);
+        const text = try file.readToEndAlloc(allocator, 128);
+        try self.determine_board_dimensions(text);
 
-        const flattened_size = std.mem.replacementSize(u8, board_string, "\n", "");
-        const flattened = try allocator.alloc(u8, flattened_size);
-        const lines = std.mem.replace(u8, board_string, "\n", "", flattened);
+        const replaced = std.mem.replace(u8, text, "\n", "", text);
 
-        self.height = @intCast(u4, lines);
-        self.width = @intCast(u4, @divExact(flattened.len, self.height));
-
-        if (self.height > std.math.maxInt(u4) or self.width > std.math.maxInt(u4) or @as(u8, self.width) * self.height > self.horizontal_mask.len) {
-            return error.IllegalBoardDimensions;
-        }
-
-        std.debug.print("Got board {s} with dimensions {}x{}\n", .{ flattened, self.width, self.height });
+        std.debug.print("Got board {s} with dimensions {}x{}\n", .{ text, self.width, self.height });
 
         var seen_goal_car = false;
         var horz_pattern: u1 = 0;
@@ -81,10 +86,10 @@ pub const Board = struct {
         var vert_patterns = try allocator.alloc(u1, self.width);
 
         // follows the mapping from https://www.michaelfogleman.com/rush/ (section Database Format)
-        for (flattened) |c, i| {
+        for (text[0 .. text.len - replaced]) |c, i| {
             if (c == 'o' or c == '.') continue;
 
-            const o = if (c != flattened[i + 1] or i + 1 == self.width) Orientation.Vertical else Orientation.Horizontal;
+            const o = if (c != text[i + 1] or i + 1 == self.width) Orientation.Vertical else Orientation.Horizontal;
 
             switch (o) {
                 Orientation.Horizontal => horz_pattern = ~horz_pattern,
@@ -95,12 +100,12 @@ pub const Board = struct {
                 Orientation.Horizontal => blk: {
                     const lim = self.width - i % self.width;
                     var j: u8 = 0;
-                    while (j < lim and flattened[i + j] == c) {
+                    while (j < lim and text[i + j] == c) {
                         self.horizontal_mask.set(i + j, .{
                             .occupied = true,
                             .pattern = horz_pattern,
                         });
-                        flattened[i + j] = 'o';
+                        text[i + j] = 'o';
                         j += 1;
                     }
                     break :blk j;
@@ -108,12 +113,12 @@ pub const Board = struct {
                 Orientation.Vertical => blk: {
                     const lim = self.height - i / self.width;
                     var j: u8 = 0;
-                    while (j < lim and flattened[i + j * self.width] == c) {
+                    while (j < lim and text[i + j * self.width] == c) {
                         self.vertical_mask.set(i + j * self.width, .{
                             .occupied = true,
                             .pattern = vert_patterns[i % self.width],
                         });
-                        flattened[i + j * self.width] = 'o';
+                        text[i + j * self.width] = 'o';
                         j += 1;
                     }
                     break :blk j;
