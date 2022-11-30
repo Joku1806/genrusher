@@ -179,8 +179,6 @@ pub const Board = struct {
     }
 
     fn offset_position(self: *Self, pos: u8, step: i8, o: Orientation) ?u8 {
-        if (pos >= self.size()) return null;
-
         const offset: i16 = switch (o) {
             Orientation.Vertical => self.width,
             Orientation.Horizontal => 1,
@@ -231,7 +229,20 @@ pub const Board = struct {
         self.do_move(reverse);
     }
 
-    // fn reached_goal(self: *Board) bool {}
+    fn goal_orientation(self: *Board) Orientation {
+        return if (self.goal_position % self.width == 0) Orientation.Horizontal else Orientation.Vertical;
+    }
+
+    pub fn reached_goal(self: *Board) bool {
+        const o = self.goal_orientation();
+
+        const mask = switch (o) {
+            Orientation.Vertical => &self.vertical_mask,
+            Orientation.Horizontal => &self.horizontal_mask,
+        };
+
+        return mask.get(self.offset_position(self.goal_position, -1, o)).occupied;
+    }
 
     // fn heuristic_blockers_lower_bound(self: *Board) f32 {}
     // fn heuristic_goal_distance(self: *Board) f32 {}
