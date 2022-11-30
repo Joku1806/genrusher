@@ -133,10 +133,10 @@ pub const Board = struct {
 
             if (c == 'A') {
                 seen_goal_car = true;
-                // NOTE: Goal is always on the right/bottom side (depending on the orientation) and in the lane of the goal car
+                // NOTE: Goal is always on the right/bottom side of the board (depending on the orientation) and in the lane of the goal car
                 self.goal_position = switch (o) {
-                    Orientation.Horizontal => @intCast(u8, i + self.width - (i % self.width)),
-                    Orientation.Vertical => @intCast(u8, (self.height - 1) * self.width + i % self.width),
+                    Orientation.Horizontal => @intCast(u8, i + self.width - (i % self.width) + 1),
+                    Orientation.Vertical => @intCast(u8, self.height * self.width + i % self.width),
                 };
             }
         }
