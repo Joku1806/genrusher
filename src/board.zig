@@ -8,6 +8,11 @@ const Orientation = enum {
     Vertical,
 };
 
+const Direction = enum {
+    Forward,
+    Backward,
+};
+
 pub const Move = struct { pos: u8, step: i8 };
 
 const ParseError = error{
@@ -242,6 +247,54 @@ pub const Board = struct {
         };
 
         return mask.get(self.offset_position(self.goal_position, -1, o)).occupied;
+    }
+
+    fn field_occupied(self: *Self, pos: u8) bool {
+        return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
+    }
+
+    pub fn is_legal_move(self: *Self, move: Move) bool {
+        if (move.step == 0) return false;
+        if (!self.field_occupied(move.pos)) return false;
+
+        const o = self.car_orientation_at(move.pos);
+        const sz = self.car_size_at(move.pos);
+
+        const sign = std.math.sign(move.step);
+        var pos = switch (sign) {
+            1 => self.offset_position(move.pos, @intCast(i8, sz), o),
+            -1 => self.offset_position(move.pos, -1, o),
+            else => unreachable,
+        };
+        const target = self.offset_position(move.pos, move.step, o);
+        if (target == null) return false;
+
+        while (pos) |p| : (pos = self.offset_position(pos.?, sign, o)) {
+            if (self.field_occupied(p)) return false;
+            if (p == target.?) return true;
+        }
+
+        return false;
+    }
+
+    pub fn step_limit(self: *Self, pos: u8, dir: Direction) i8 {
+        const o = self.car_orientation_at(pos);
+        const sz = self.car_size_at(pos);
+
+        const sign = if (dir == Direction.Forward) 1 else -1;
+        var cpos = switch (dir) {
+            Direction.Forward => self.offset_position(pos, @intCast(i8, sz), o),
+            Direction.Backward => self.offset_position(pos, -1, o),
+            else => unreachable,
+        };
+
+        var step: i8 = 0;
+        while (cpos) |p| : (cpos = self.offset_position(cpos.?, sign, o)) {
+            if (self.field_occupied(p)) break;
+            step += sign;
+        }
+
+        return step;
     }
 
     // fn heuristic_blockers_lower_bound(self: *Board) f32 {}

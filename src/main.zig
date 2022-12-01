@@ -10,8 +10,11 @@ pub fn main() anyerror!void {
         .step = 2,
     };
 
-    b.do_move(m);
-    b.undo_move(m);
+    if (b.is_legal_move(m)) {
+        std.debug.print("Move {any} is legal, doing it!\n", .{m});
+        b.do_move(m);
+        b.undo_move(m);
+    }
 
     std.debug.print("Board after undoing Move: {any}", .{b});
 }
