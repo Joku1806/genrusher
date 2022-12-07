@@ -17,6 +17,7 @@ const Direction = enum {
 };
 
 pub const Move = struct { pos: u8, step: i8 };
+pub const MoveRange = struct { pos: u8, min_step: i8, max_step: i8 };
 
 const ParseError = error{
     InvalidFormat,
@@ -327,6 +328,55 @@ pub const Board = struct {
         }
 
         return step;
+    }
+
+    pub fn calculate_move_range(self: *Self, pos: u8) MoveRange {
+        return .{
+            .pos = pos,
+            .min_step = self.step_limit(pos, Direction.Backward),
+            .max_step = self.step_limit(pos, Direction.Forward),
+        };
+    }
+
+    pub fn do_move(self: *Self, move: Move) void {
+        const o = self.car_orientation_at(move.pos);
+        const sz = self.car_size_at(move.pos);
+        const mask = switch (o) {
+            Orientation.Vertical => &self.vertical_mask,
+            Orientation.Horizontal => &self.horizontal_mask,
+        };
+
+        var pos = move.pos;
+        const target = self.offset_position(move.pos, move.step, o);
+        const sign = std.math.sign(move.step);
+        while (pos != target) : (pos = self.offset_position(pos, sign, o).?) {
+            const source = switch (sign) {
+                1 => pos,
+                -1 => self.offset_position(pos, @intCast(i8, sz - 1), o),
+                else => unreachable,
+            };
+
+            const destination = switch (sign) {
+                1 => self.offset_position(pos, @intCast(i8, sz), o),
+                -1 => self.offset_position(pos, -1, o),
+                else => unreachable,
+            };
+
+            mask.set(destination.?, mask.get(source.?));
+            mask.set(source.?, .{ .occupied = false });
+        }
+    }
+
+    pub fn undo_move(self: *Board, move: Move) void {
+        const t = self.offset_position(move.pos, move.step, Orientation.Vertical);
+        const o = if (self.car_orientation_at(t.?) == Orientation.Vertical) Orientation.Vertical else Orientation.Horizontal;
+
+        const reverse: Move = .{
+            .pos = self.offset_position(move.pos, move.step, o).?,
+            .step = -move.step,
+        };
+
+        self.do_move(reverse);
     }
 
     // fn heuristic_blockers_lower_bound(self: *Board) f32 {}
