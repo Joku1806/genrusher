@@ -383,6 +383,8 @@ pub const Board = struct {
     // fn heuristic_goal_distance(self: *Board) f32 {}
     // fn heuristic_free_space(self: *Board) f32 {}
     // fn heuristic_initial_board_distance(self: *Board, initial: *Board) f32 {}
+    // fn heuristic_difficulty(self: *Self) f32 {}
+    // fn heuristic_move_bound(self: *Self) f32 {}
 };
 
 test "offset_position" {
