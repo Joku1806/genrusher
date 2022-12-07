@@ -1,5 +1,8 @@
 const std = @import("std");
 
+const expect = std.testing.expect;
+const expectError = std.testing.expectError;
+
 const File = std.fs.File;
 const PackedIntArray = std.packed_int_array.PackedIntArray;
 
@@ -331,3 +334,94 @@ pub const Board = struct {
     // fn heuristic_free_space(self: *Board) f32 {}
     // fn heuristic_initial_board_distance(self: *Board, initial: *Board) f32 {}
 };
+
+test "offset_position" {
+    const text = "4:4:?:?:ooooAAoooooooooo";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(b.offset_position(0, -1, Orientation.Vertical) == null);
+    try expect(b.offset_position(0, -20, Orientation.Vertical) == null);
+    try expect(b.offset_position(0, -1, Orientation.Horizontal) == null);
+    try expect(b.offset_position(0, -20, Orientation.Horizontal) == null);
+
+    try expect(b.offset_position(1, 2, Orientation.Vertical).? == 9);
+    try expect(b.offset_position(3, 20, Orientation.Vertical) == null);
+    try expect(b.offset_position(1, 2, Orientation.Horizontal).? == 3);
+    try expect(b.offset_position(6, 20, Orientation.Horizontal) == null);
+
+    try expect(b.offset_position(16, -1, Orientation.Vertical).? == 12);
+}
+
+test "parsing oversized board" {
+    const text = "9:9:?:?:ooooooooooooooBooooooooBooDoooAAAooDooooCoooDooooCooooooooooooooooooooooooooooooo";
+
+    var b = Board.init();
+    b.parse(text) catch |err| {
+        try expect(err == ParseError.IllegalBoardDimensions);
+        return;
+    };
+    unreachable;
+}
+
+test "parsing incomplete board" {
+    const text = "4:4:?:?:oCCoDoooDAAoDoo";
+
+    var b = Board.init();
+    b.parse(text) catch |err| {
+        try expect(err == ParseError.IllegalBoardDimensions);
+        return;
+    };
+    unreachable;
+}
+
+test "parsing goal car missing" {
+    const text = "6:6:?:?:oBBBooDDoCCoooRoooEERSTToooSoooFFSoo";
+
+    var b = Board.init();
+    b.parse(text) catch |err| {
+        try expect(err == ParseError.GoalCarMissing);
+        return;
+    };
+    unreachable;
+}
+
+test "parsing car on goal car lane" {
+    const text = "6:6:?:?:oooooooooooooAAoBBoooooooooooooooooo";
+
+    var b = Board.init();
+    b.parse(text) catch |err| {
+        try expect(err == ParseError.MultipleGoalCars);
+        return;
+    };
+    unreachable;
+}
+
+test "parsing oversized car" {
+    const text = "8:2:?:?:AAAAAAooooBBBBBB";
+
+    var b = Board.init();
+    b.parse(text) catch |err| {
+        try expect(err == ParseError.IllegalCarSize);
+        return;
+    };
+    unreachable;
+}
+
+test "parsing valid board" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+}
+
+test "moving from empty field" {}
+test "moving from middle of car" {}
+test "moving into other car" {}
+test "moving from out of bounds" {}
+test "moving out of bounds" {}
+test "move valid" {}
+
+test "reached goal" {}
+
+test "generate moves" {}
