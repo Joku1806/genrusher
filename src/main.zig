@@ -2,8 +2,9 @@ const std = @import("std");
 const board = @import("board.zig");
 
 pub fn main() anyerror!void {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
     var b = board.Board.init();
-    try b.read_from_file("test.txt");
+    try b.parse(text);
 
     const m: board.Move = .{
         .pos = 1,

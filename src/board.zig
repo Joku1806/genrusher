@@ -16,10 +16,12 @@ const Direction = enum {
 pub const Move = struct { pos: u8, step: i8 };
 
 const ParseError = error{
+    InvalidFormat,
     IllegalBoardDimensions,
     IllegalCarSize,
     DuplicateCar,
     GoalCarMissing,
+    MultipleGoalCars,
 };
 
 const Field = packed struct {
@@ -37,6 +39,8 @@ pub const Board = struct {
     width: u4,
     height: u4,
     goal_position: u8,
+    relative_difficulty: ?f32,
+    min_moves: ?usize,
 
     pub fn init() Board {
         return .{
@@ -45,116 +49,46 @@ pub const Board = struct {
             .width = 0,
             .height = 0,
             .goal_position = 0,
+            .relative_difficulty = null,
+            .min_moves = null,
         };
-    }
-
-    fn determine_board_dimensions(self: *Self, contents: []u8) error{IllegalBoardDimensions}!void {
-        const lim: usize = std.math.maxInt(u4);
-        const height: usize = std.mem.count(u8, contents, "\n");
-
-        if (height > lim) return error.IllegalBoardDimensions;
-        if ((contents.len - height) % height != 0) return error.IllegalBoardDimensions;
-        const width: usize = (contents.len - height) / height; // subtract height because of newlines
-
-        if (width * height > 64) return error.IllegalBoardDimensions;
-
-        self.width = @intCast(u4, width);
-        self.height = @intCast(u4, height);
-    }
-
-    pub fn read_from_file(self: *Self, path: []const u8) (File.OpenError || std.mem.Allocator.Error || ParseError || error{BrokenPipe} ||
-        error{ConnectionResetByPeer} ||
-        error{ConnectionTimedOut} ||
-        error{InputOutput} ||
-        error{NotOpenForReading} ||
-        error{OperationAborted})!void {
-        const file = try std.fs.cwd().openFile(
-            path,
-            .{},
-        );
-        defer file.close();
-
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer arena.deinit();
-        const allocator = arena.allocator();
-
-        const text = try file.readToEndAlloc(allocator, 128);
-        try self.determine_board_dimensions(text);
-
-        const replaced = std.mem.replace(u8, text, "\n", "", text);
-
-        std.debug.print("Got board {s} with dimensions {}x{}\n", .{ text, self.width, self.height });
-
-        var seen_goal_car = false;
-        var horz_pattern: u1 = 0;
-        // Save the current vertical pattern for each row, as we do not iterate in vertical order.
-        var vert_patterns = try allocator.alloc(u1, self.width);
-
-        // follows the mapping from https://www.michaelfogleman.com/rush/ (section Database Format)
-        for (text[0 .. text.len - replaced]) |c, i| {
-            if (c == 'o' or c == '.') continue;
-
-            const o = if (c != text[i + 1] or i + 1 == self.width) Orientation.Vertical else Orientation.Horizontal;
-
-            switch (o) {
-                Orientation.Horizontal => horz_pattern = ~horz_pattern,
-                Orientation.Vertical => vert_patterns[i % self.width] = ~vert_patterns[i % self.width],
-            }
-
-            const sz = switch (o) {
-                Orientation.Horizontal => blk: {
-                    const lim = self.width - i % self.width;
-                    var j: u8 = 0;
-                    while (j < lim and text[i + j] == c) {
-                        self.horizontal_mask.set(i + j, .{
-                            .occupied = true,
-                            .pattern = horz_pattern,
-                        });
-                        text[i + j] = 'o';
-                        j += 1;
-                    }
-                    break :blk j;
-                },
-                Orientation.Vertical => blk: {
-                    const lim = self.height - i / self.width;
-                    var j: u8 = 0;
-                    while (j < lim and text[i + j * self.width] == c) {
-                        self.vertical_mask.set(i + j * self.width, .{
-                            .occupied = true,
-                            .pattern = vert_patterns[i % self.width],
-                        });
-                        text[i + j * self.width] = 'o';
-                        j += 1;
-                    }
-                    break :blk j;
-                },
-            };
-
-            if (sz < 2 or sz > 3) {
-                return error.IllegalCarSize;
-            }
-
-            std.debug.print("Parsed {} car '{c}' at position (x: {}, y: {}) with size {}\n", .{ o, c, i % self.width, i / self.width, sz });
-
-            if (c == 'A') {
-                seen_goal_car = true;
-                // NOTE: Goal is always on the right/bottom side of the board (depending on the orientation) and in the lane of the goal car
-                self.goal_position = switch (o) {
-                    Orientation.Horizontal => @intCast(u8, i + self.width - (i % self.width) + 1),
-                    Orientation.Vertical => @intCast(u8, self.height * self.width + i % self.width),
-                };
-            }
-        }
-
-        if (!seen_goal_car) {
-            return error.GoalCarMissing;
-        }
-
-        std.debug.print("Resulting Board: {any} with size {}\n", .{ self, std.fmt.fmtIntSizeBin(@sizeOf(Board)) });
     }
 
     fn size(self: *Self) u8 {
         return @as(u8, self.width) * self.height;
+    }
+
+    fn to_position(self: *Self, row: u4, column: u4) u8 {
+        return @as(u8, row) * self.width + column;
+    }
+
+    fn extract_row(self: *Self, pos: u8) u4 {
+        return @intCast(u4, pos / self.width);
+    }
+
+    fn extract_column(self: *Self, pos: u8) u4 {
+        return @intCast(u4, pos % self.width);
+    }
+
+    fn offset_position(self: *Self, pos: u8, step: i8, o: Orientation) ?u8 {
+        const offset: i16 = switch (o) {
+            Orientation.Vertical => self.width,
+            Orientation.Horizontal => 1,
+        };
+
+        if (pos + offset * step < 0) return null;
+        const target = @intCast(u8, pos + offset * step);
+
+        switch (o) {
+            Orientation.Vertical => if (self.extract_row(target) >= self.height) return null,
+            Orientation.Horizontal => if (self.extract_row(target) != self.extract_row(pos)) return null,
+        }
+
+        return target;
+    }
+
+    fn field_occupied(self: *Self, pos: u8) bool {
+        return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
     }
 
     fn car_orientation_at(self: *Self, pos: u8) Orientation {
@@ -168,72 +102,171 @@ pub const Board = struct {
             Orientation.Vertical => &self.vertical_mask,
             Orientation.Horizontal => &self.horizontal_mask,
         };
-        const offset = switch (o) {
-            Orientation.Vertical => self.width,
-            Orientation.Horizontal => 1,
-        };
 
-        var c = pos;
         const pattern = mask.get(pos).pattern;
-        while (mask.get(c).pattern == pattern) {
+        var c: ?u8 = pos;
+        while (c) |p| : (c = self.offset_position(c.?, 1, o)) {
+            if (!mask.get(p).occupied or mask.get(p).pattern != pattern) break;
             sz += 1;
-            c += offset;
         }
 
         return sz;
     }
 
-    fn offset_position(self: *Self, pos: u8, step: i8, o: Orientation) ?u8 {
-        const offset: i16 = switch (o) {
-            Orientation.Vertical => self.width,
-            Orientation.Horizontal => 1,
+    fn parse_width(self: *Self, text: []const u8) error{InvalidFormat}!usize {
+        const wsep = std.mem.indexOf(u8, text, ":") orelse return error.InvalidFormat;
+        if (wsep == 0) return error.InvalidFormat;
+
+        self.width = std.fmt.parseInt(u4, text[0..wsep], 10) catch |err| {
+            std.debug.print("{}\n", .{err});
+            return error.InvalidFormat;
         };
 
-        if (pos + offset * step < 0 or pos + offset * step >= self.size()) return null;
-        return @intCast(u8, pos + offset * step);
+        return wsep + 1;
     }
 
-    pub fn do_move(self: *Self, move: Move) void {
-        const o = self.car_orientation_at(move.pos);
-        const sz = self.car_size_at(move.pos);
-        const mask = switch (o) {
-            Orientation.Vertical => &self.vertical_mask,
-            Orientation.Horizontal => &self.horizontal_mask,
+    fn parse_height(self: *Self, text: []const u8) error{InvalidFormat}!usize {
+        const hsep = std.mem.indexOf(u8, text, ":") orelse return error.InvalidFormat;
+        if (hsep == 0) return error.InvalidFormat;
+
+        self.height = std.fmt.parseInt(u4, text[0..hsep], 10) catch |err| {
+            std.debug.print("{}\n", .{err});
+            return error.InvalidFormat;
         };
 
-        var pos = move.pos;
-        const target = self.offset_position(move.pos, move.step, o);
-        const sign = std.math.sign(move.step);
-        while (pos != target) : (pos = self.offset_position(pos, sign, o).?) {
-            const source = switch (sign) {
-                1 => pos,
-                -1 => self.offset_position(pos, @intCast(i8, sz - 1), o),
-                else => unreachable,
-            };
+        return hsep + 1;
+    }
 
-            const destination = switch (sign) {
-                1 => self.offset_position(pos, @intCast(i8, sz), o),
-                -1 => self.offset_position(pos, -1, o),
-                else => unreachable,
-            };
+    fn parse_difficulty(self: *Self, text: []const u8) error{InvalidFormat}!usize {
+        const dsep = std.mem.indexOf(u8, text, ":") orelse return error.InvalidFormat;
+        if (dsep == 0) return error.InvalidFormat;
 
-            mask.set(destination.?, mask.get(source.?));
-            mask.set(source.?, .{ .occupied = false });
+        self.relative_difficulty = switch (text[0]) {
+            '?' => null,
+            else => std.fmt.parseFloat(f32, text[0..dsep]) catch |err| {
+                std.debug.print("{}\n", .{err});
+                return error.InvalidFormat;
+            },
+        };
+
+        return dsep + 1;
+    }
+
+    fn parse_min_moves(self: *Self, text: []const u8) error{InvalidFormat}!usize {
+        const msep = std.mem.indexOf(u8, text, ":") orelse return error.InvalidFormat;
+        if (msep == 0) return error.InvalidFormat;
+
+        self.min_moves = switch (text[0]) {
+            '?' => null,
+            else => std.fmt.parseInt(usize, text[0..msep], 10) catch |err| {
+                std.debug.print("{}\n", .{err});
+                return error.InvalidFormat;
+            },
+        };
+
+        return msep + 1;
+    }
+
+    // The format for the board string is as follows:
+    // Dimensions: width x height
+    // Board difficulty: [0, 1]f32 or "?" if unknown
+    // Length of minimal solution: usize or "?" if unknown
+    // Board FEN: follows the mapping from https://www.michaelfogleman.com/rush/ (section Database Format)
+    // Between every field, ":" is used as a separator.
+    //
+    // A standard unsolved board would for example be:
+    // 6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM
+    pub fn parse(self: *Self, text: []const u8) !void {
+        var offset = try self.parse_width(text);
+        offset += try self.parse_height(text[offset..]);
+        offset += try self.parse_difficulty(text[offset..]);
+        offset += try self.parse_min_moves(text[offset..]);
+
+        const board_fen = text[offset..];
+
+        if (board_fen.len != self.size() or board_fen.len > 64) {
+            return ParseError.IllegalBoardDimensions;
         }
-    }
 
-    pub fn undo_move(self: *Board, move: Move) void {
-        const t = self.offset_position(move.pos, move.step, Orientation.Vertical);
-        const o = if (self.car_orientation_at(t.?) == Orientation.Vertical) Orientation.Vertical else Orientation.Horizontal;
+        std.debug.print("Got board {s} with dimensions {}x{}, relative difficulty: {?}, length of minimal solution: {?}\n", .{ board_fen, self.width, self.height, self.relative_difficulty, self.min_moves });
 
-        const reverse: Move = .{
-            .pos = self.offset_position(move.pos, move.step, o).?,
-            .step = -move.step,
+        var seen_goal_car = false;
+        var horz_pattern: u1 = 0;
+        // Save the current vertical pattern for each row, as we do not iterate in vertical order.
+        // For our small board sizes of u4, we can just use an array. For larger boards,
+        // we probably should just lookup the last vertical pattern in the current column.
+        var vert_patterns: [std.math.maxInt(u4)]u1 = undefined;
+
+        for (board_fen) |c, i| {
+            if (c == 'o' or c == '.' or self.field_occupied(@intCast(u8, i))) {
+                continue;
+            }
+
+            const o = if (c != board_fen[i + 1] or i + 1 == self.width) Orientation.Vertical else Orientation.Horizontal;
+
+            const pattern = switch (o) {
+                Orientation.Horizontal => &horz_pattern,
+                Orientation.Vertical => &vert_patterns[i % self.width],
+            };
+
+            const mask = switch (o) {
+                Orientation.Horizontal => &self.horizontal_mask,
+                Orientation.Vertical => &self.vertical_mask,
+            };
+
+            const sz = blk: {
+                var pos: ?u8 = @intCast(u8, i);
+                var j: usize = 0;
+                while (pos) |p| : (pos = self.offset_position(pos.?, 1, o)) {
+                    if (board_fen[p] != c) break;
+                    mask.set(p, .{ .occupied = true, .pattern = pattern.* });
+                    j += 1;
+                }
+                break :blk j;
+            };
+
+            if (sz < 2 or sz > 3) {
+                return error.IllegalCarSize;
+            }
+
+            pattern.* = ~pattern.*;
+
+            std.debug.print("Parsed {} car '{c}' at position (x: {}, y: {}) with size {}\n", .{ o, c, self.extract_column(@intCast(u8, i)), self.extract_row(@intCast(u8, i)), sz });
+
+            if (c == 'A') {
+                seen_goal_car = true;
+                // NOTE: Goal is always on the right/bottom side of the board
+                // (depending on the orientation) and in the lane of the goal car.
+                self.goal_position = switch (o) {
+                    Orientation.Horizontal => self.to_position(self.extract_row(@intCast(u8, i)), self.width),
+                    Orientation.Vertical => self.to_position(self.height, self.extract_column(@intCast(u8, i))),
+                };
+            }
+        }
+
+        if (!seen_goal_car) {
+            return error.GoalCarMissing;
+        }
+
+        var goal_cars: usize = 0;
+        const go = self.goal_orientation();
+        var pos: ?u8 = switch (go) {
+            Orientation.Horizontal => self.to_position(self.extract_row(self.goal_position) - 1, 0),
+            Orientation.Vertical => self.to_position(0, self.extract_column(self.goal_position)),
         };
 
-        self.do_move(reverse);
+        while (pos) |p| : (pos = self.offset_position(pos.?, 1, go)) {
+            if (self.field_occupied(p) and self.car_orientation_at(p) == go) {
+                goal_cars += 1;
+                if (goal_cars > 1) return error.MultipleGoalCars;
+                pos = self.offset_position(p, @intCast(i8, self.car_size_at(p) - 1), go);
+            }
+        }
+
+        std.debug.print("Resulting Board: {any} with size {}\n", .{ self, std.fmt.fmtIntSizeBin(@sizeOf(Board)) });
     }
 
+    // FIXME: returns Horizontal for leftmost Vertical goal.
     fn goal_orientation(self: *Board) Orientation {
         return if (self.goal_position % self.width == 0) Orientation.Horizontal else Orientation.Vertical;
     }
@@ -247,10 +280,6 @@ pub const Board = struct {
         };
 
         return mask.get(self.offset_position(self.goal_position, -1, o)).occupied;
-    }
-
-    fn field_occupied(self: *Self, pos: u8) bool {
-        return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
     }
 
     pub fn is_legal_move(self: *Self, move: Move) bool {
