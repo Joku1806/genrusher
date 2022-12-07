@@ -46,7 +46,7 @@ pub const Board = struct {
     relative_difficulty: ?f32,
     min_moves: ?usize,
 
-    pub fn init() Board {
+    pub fn init() Self {
         return .{
             .horizontal_mask = PackedIntArray(Field, 64).initAllTo(.{ .occupied = false }),
             .vertical_mask = PackedIntArray(Field, 64).initAllTo(.{ .occupied = false }),
@@ -95,6 +95,7 @@ pub const Board = struct {
         return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
     }
 
+    // FIXME: What to return for empty field?
     fn car_orientation_at(self: *Self, pos: u8) Orientation {
         return if (self.vertical_mask.get(pos).occupied) Orientation.Vertical else Orientation.Horizontal;
     }
@@ -310,7 +311,7 @@ pub const Board = struct {
         return false;
     }
 
-    pub fn step_limit(self: *Self, pos: u8, dir: Direction) i8 {
+    fn step_limit(self: *Self, pos: u8, dir: Direction) i8 {
         const o = self.car_orientation_at(pos);
         const sz = self.car_size_at(pos);
 
