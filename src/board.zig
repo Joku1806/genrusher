@@ -429,55 +429,35 @@ test "parsing oversized board" {
     const text = "9:9:?:?:ooooooooooooooBooooooooBooDoooAAAooDooooCoooDooooCooooooooooooooooooooooooooooooo";
 
     var b = Board.init();
-    b.parse(text) catch |err| {
-        try expect(err == ParseError.IllegalBoardDimensions);
-        return;
-    };
-    unreachable;
+    try expectError(ParseError.IllegalBoardDimensions, b.parse(text));
 }
 
 test "parsing incomplete board" {
     const text = "4:4:?:?:oCCoDoooDAAoDoo";
 
     var b = Board.init();
-    b.parse(text) catch |err| {
-        try expect(err == ParseError.IllegalBoardDimensions);
-        return;
-    };
-    unreachable;
+    try expectError(ParseError.IllegalBoardDimensions, b.parse(text));
 }
 
 test "parsing goal car missing" {
     const text = "6:6:?:?:oBBBooDDoCCoooRoooEERSTToooSoooFFSoo";
 
     var b = Board.init();
-    b.parse(text) catch |err| {
-        try expect(err == ParseError.GoalCarMissing);
-        return;
-    };
-    unreachable;
+    try expectError(ParseError.GoalCarMissing, b.parse(text));
 }
 
 test "parsing car on goal car lane" {
     const text = "6:6:?:?:oooooooooooooAAoBBoooooooooooooooooo";
 
     var b = Board.init();
-    b.parse(text) catch |err| {
-        try expect(err == ParseError.MultipleGoalCars);
-        return;
-    };
-    unreachable;
+    try expectError(ParseError.MultipleGoalCars, b.parse(text));
 }
 
 test "parsing oversized car" {
     const text = "8:2:?:?:AAAAAAooooBBBBBB";
 
     var b = Board.init();
-    b.parse(text) catch |err| {
-        try expect(err == ParseError.IllegalCarSize);
-        return;
-    };
-    unreachable;
+    try expectError(ParseError.IllegalCarSize, b.parse(text));
 }
 
 test "parsing valid board" {
