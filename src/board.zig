@@ -2,6 +2,7 @@ const std = @import("std");
 
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
+const expectApproxEqAbs = std.testing.expectApproxEqAbs;
 
 const File = std.fs.File;
 const PackedIntArray = std.packed_int_array.PackedIntArray;
@@ -407,22 +408,13 @@ pub const Board = struct {
     // fn heuristic_move_bound(self: *Self) f32 {}
 };
 
-test "offset_position" {
-    const text = "4:4:?:?:ooooAAoooooooooo";
-    var b = Board.init();
-    b.parse(text) catch unreachable;
+test "parsing board info missing" {
+    const texts = [_][]const u8{ "", ":", "666:2:", "::4:", "3:2:::AAABBB", "::?:?:" };
 
-    try expect(b.offset_position(0, -1, Orientation.Vertical) == null);
-    try expect(b.offset_position(0, -20, Orientation.Vertical) == null);
-    try expect(b.offset_position(0, -1, Orientation.Horizontal) == null);
-    try expect(b.offset_position(0, -20, Orientation.Horizontal) == null);
-
-    try expect(b.offset_position(1, 2, Orientation.Vertical).? == 9);
-    try expect(b.offset_position(3, 20, Orientation.Vertical) == null);
-    try expect(b.offset_position(1, 2, Orientation.Horizontal).? == 3);
-    try expect(b.offset_position(6, 20, Orientation.Horizontal) == null);
-
-    try expect(b.offset_position(16, -1, Orientation.Vertical).? == 12);
+    for (texts) |t| {
+        var b = Board.init();
+        try expectError(ParseError.InvalidFormat, b.parse(t));
+    }
 }
 
 test "parsing oversized board" {
@@ -467,13 +459,177 @@ test "parsing valid board" {
     b.parse(text) catch unreachable;
 }
 
-test "moving from empty field" {}
-test "moving from middle of car" {}
-test "moving into other car" {}
-test "moving from out of bounds" {}
-test "moving out of bounds" {}
-test "move valid" {}
+test "parsing board with complete info" {
+    const text = "6:6:0.5432:12:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
 
-test "reached goal" {}
+    var b = Board.init();
+    b.parse(text) catch unreachable;
 
-test "generate moves" {}
+    try expect(b.width == 6);
+    try expect(b.height == 6);
+    try expect(b.relative_difficulty != null);
+    try expect(b.min_moves != null);
+
+    try expectApproxEqAbs(b.relative_difficulty.?, 0.5432, 3 * std.math.floatEps(@TypeOf(b.relative_difficulty.?)));
+    try expect(b.min_moves.? == 12);
+}
+
+test "position offsets" {
+    const text = "4:4:?:?:ooooAAoooooooooo";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(b.offset_position(0, -1, Orientation.Vertical) == null);
+    try expect(b.offset_position(0, -20, Orientation.Vertical) == null);
+    try expect(b.offset_position(0, -1, Orientation.Horizontal) == null);
+    try expect(b.offset_position(0, -20, Orientation.Horizontal) == null);
+
+    try expect(b.offset_position(1, 2, Orientation.Vertical).? == 9);
+    try expect(b.offset_position(3, 20, Orientation.Vertical) == null);
+    try expect(b.offset_position(1, 2, Orientation.Horizontal).? == 3);
+    try expect(b.offset_position(6, 20, Orientation.Horizontal) == null);
+
+    try expect(b.offset_position(16, -1, Orientation.Vertical).? == 12);
+}
+
+test "field occupied" {
+    const text = "4:4:?:?:ooBoAABooooooooo";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(b.field_occupied(2));
+    try expect(b.field_occupied(5));
+    try expect(!b.field_occupied(14));
+    try expect(!b.field_occupied(180));
+}
+
+test "car orientation" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(b.car_orientation_at(0) catch unreachable == Orientation.Vertical);
+    try expect(b.car_orientation_at(1) catch unreachable == Orientation.Horizontal);
+    try expect(b.car_orientation_at(9) catch unreachable == Orientation.Vertical);
+    try expect(b.car_orientation_at(10) catch unreachable == Orientation.Horizontal);
+    try expect(b.car_orientation_at(12) catch unreachable == Orientation.Vertical);
+    try expect(b.car_orientation_at(13) catch unreachable == Orientation.Horizontal);
+    try expect(b.car_orientation_at(20) catch unreachable == Orientation.Vertical);
+    try expect(b.car_orientation_at(21) catch unreachable == Orientation.Horizontal);
+    try expect(b.car_orientation_at(23) catch unreachable == Orientation.Vertical);
+    try expect(b.car_orientation_at(24) catch unreachable == Orientation.Horizontal);
+    try expect(b.car_orientation_at(30) catch unreachable == Orientation.Horizontal);
+    try expect(b.car_orientation_at(32) catch unreachable == Orientation.Horizontal);
+    try expectError(BoardError.ExpectedOccupiedField, b.car_orientation_at(7));
+    try expectError(BoardError.PositionOutOfBounds, b.car_orientation_at(55));
+}
+
+test "car size" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(b.car_size_at(0) catch unreachable == 2);
+    try expect(b.car_size_at(1) catch unreachable == 2);
+    try expect(b.car_size_at(9) catch unreachable == 2);
+    try expect(b.car_size_at(10) catch unreachable == 2);
+    try expect(b.car_size_at(12) catch unreachable == 2);
+    try expect(b.car_size_at(13) catch unreachable == 2);
+    try expect(b.car_size_at(20) catch unreachable == 2);
+    try expect(b.car_size_at(21) catch unreachable == 2);
+    try expect(b.car_size_at(23) catch unreachable == 3);
+    try expect(b.car_size_at(24) catch unreachable == 2);
+    try expect(b.car_size_at(30) catch unreachable == 2);
+    try expect(b.car_size_at(32) catch unreachable == 3);
+    try expectError(BoardError.ExpectedOccupiedField, b.car_size_at(3));
+    try expectError(BoardError.PositionOutOfBounds, b.car_size_at(40));
+}
+
+test "move car collision" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(!b.is_legal_move(.{ .pos = 23, .step = -2 }));
+}
+
+test "move bounds collision" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(!b.is_legal_move(.{ .pos = 1, .step = 5 }));
+}
+
+test "move from out of bounds" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(!b.is_legal_move(.{ .pos = 40, .step = -10 }));
+}
+
+test "move undoing" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b1 = Board.init();
+    var b2 = Board.init();
+    b1.parse(text) catch unreachable;
+    b2.parse(text) catch unreachable;
+
+    const m1: Move = .{ .pos = 1, .step = 3 };
+    const m2: Move = .{ .pos = 9, .step = -1 };
+    const m3: Move = .{ .pos = 13, .step = 3 };
+
+    b2.do_move(m1);
+    b2.do_move(m2);
+    b2.do_move(m3);
+
+    b2.undo_move(m3);
+    b2.undo_move(m2);
+    b2.undo_move(m1);
+
+    try expect(b1.vertical_mask.len == b2.vertical_mask.len);
+    try expect(b1.horizontal_mask.len == b2.horizontal_mask.len);
+
+    var i: usize = 0;
+    while (i < b1.vertical_mask.len) : (i += 1) {
+        try expect(std.meta.eql(b1.vertical_mask.get(i), b2.vertical_mask.get(i)));
+        try expect(std.meta.eql(b1.horizontal_mask.get(i), b2.horizontal_mask.get(i)));
+    }
+}
+
+test "move generation" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    const range = b.calculate_move_range(1);
+    var i: isize = range.min_step;
+    while (i < range.max_step) : (i += 1) {
+        if (i == 0) continue;
+        try expect(b.is_legal_move(.{ .pos = 1, .step = @intCast(i8, i) }));
+    }
+}
+
+test "goal orientation" {
+    const texts = [_][]const u8{ "2:2:?:?:AAoo", "2:2:?:?:ooAA", "2:2:?:?:AoAo", "2:2:?:?:oAoA" };
+    const expected_os = [_]Orientation{ Orientation.Horizontal, Orientation.Horizontal, Orientation.Vertical, Orientation.Vertical };
+
+    var i: usize = 0;
+    while (i < texts.len) : (i += 1) {
+        var b = Board.init();
+        b.parse(texts[i]) catch unreachable;
+
+        try expect(b.goal_orientation == expected_os[i]);
+    }
+}
+
+test "reached goal" {
+    const text = "3:1:?:?:AAo";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(!b.reached_goal());
+    b.do_move(.{ .pos = 0, .step = 1 });
+    try expect(b.reached_goal());
+}
