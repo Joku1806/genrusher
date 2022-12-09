@@ -28,6 +28,12 @@ const ParseError = error{
     MultipleGoalCars,
 };
 
+const BoardError = error{
+    ExpectedOccupiedField,
+    PositionOutOfBounds,
+    InvalidMove,
+};
+
 const Field = packed struct {
     occupied: bool = false, // Checks if the field is occupied by a car. There is no separate flag needed for the goal car, since it will be the only one in its lane and the orientation can be deduced by the goal position.
     pattern: u1 = 0, // Since two cars on a lane can't swap places, alternating this bit between cars provides a memory efficient way of distinguishing them. This is only possible because the Board uses a separate horizontal and vertical mask.
@@ -37,12 +43,14 @@ pub const Board = struct {
     const Self = @This();
 
     // TODO: check viability of ArrayBitSet
-    // NOTE: It is very unlikely that we want to solve a board larger than 8x8, so we use an array with static size of 64.
+    // NOTE: It is very unlikely that we want to solve a board larger than 8x8,
+    // so we use an array with static size of 64.
     horizontal_mask: PackedIntArray(Field, 64),
     vertical_mask: PackedIntArray(Field, 64),
     width: u4,
     height: u4,
-    goal_position: u8,
+    goal_lane: u4,
+    goal_orientation: Orientation,
     relative_difficulty: ?f32,
     min_moves: ?usize,
 
@@ -50,11 +58,12 @@ pub const Board = struct {
         return .{
             .horizontal_mask = PackedIntArray(Field, 64).initAllTo(.{ .occupied = false }),
             .vertical_mask = PackedIntArray(Field, 64).initAllTo(.{ .occupied = false }),
-            .width = 0,
-            .height = 0,
-            .goal_position = 0,
-            .relative_difficulty = null,
-            .min_moves = null,
+            .width = undefined,
+            .height = undefined,
+            .goal_lane = undefined,
+            .goal_orientation = undefined,
+            .relative_difficulty = undefined,
+            .min_moves = undefined,
         };
     }
 
@@ -91,16 +100,19 @@ pub const Board = struct {
     }
 
     fn field_occupied(self: *Self, pos: u8) bool {
+        if (pos >= self.size()) return false;
         return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
     }
 
     // FIXME: What to return for empty field?
-    fn car_orientation_at(self: *Self, pos: u8) Orientation {
+    fn car_orientation_at(self: *Self, pos: u8) BoardError!Orientation {
+        if (pos >= self.size()) return BoardError.PositionOutOfBounds;
+        if (!self.field_occupied(pos)) return BoardError.ExpectedOccupiedField;
         return if (self.vertical_mask.get(pos).occupied) Orientation.Vertical else Orientation.Horizontal;
     }
 
-    fn car_size_at(self: *Self, pos: u8) usize {
-        const o = self.car_orientation_at(pos);
+    fn car_size_at(self: *Self, pos: u8) BoardError!usize {
+        const o = try self.car_orientation_at(pos);
         var sz: usize = 0;
         const mask = switch (o) {
             Orientation.Vertical => &self.vertical_mask,
@@ -241,9 +253,10 @@ pub const Board = struct {
                 seen_goal_car = true;
                 // NOTE: Goal is always on the right/bottom side of the board
                 // (depending on the orientation) and in the lane of the goal car.
-                self.goal_position = switch (o) {
-                    Orientation.Horizontal => self.to_position(self.extract_row(@intCast(u8, i)), self.width),
-                    Orientation.Vertical => self.to_position(self.height, self.extract_column(@intCast(u8, i))),
+                self.goal_orientation = o;
+                self.goal_lane = switch (o) {
+                    Orientation.Vertical => self.extract_column(@intCast(u8, i)),
+                    Orientation.Horizontal => self.extract_row(@intCast(u8, i)),
                 };
             }
         }
@@ -253,45 +266,45 @@ pub const Board = struct {
         }
 
         var goal_cars: usize = 0;
-        const go = self.goal_orientation();
-        var pos: ?u8 = switch (go) {
-            Orientation.Horizontal => self.to_position(self.extract_row(self.goal_position) - 1, 0),
-            Orientation.Vertical => self.to_position(0, self.extract_column(self.goal_position)),
+        var pos: ?u8 = switch (self.goal_orientation) {
+            Orientation.Horizontal => self.to_position(self.goal_lane, 0),
+            Orientation.Vertical => self.to_position(0, self.goal_lane),
         };
 
-        while (pos) |p| : (pos = self.offset_position(pos.?, 1, go)) {
-            if (self.field_occupied(p) and self.car_orientation_at(p) == go) {
-                goal_cars += 1;
-                if (goal_cars > 1) return error.MultipleGoalCars;
-                pos = self.offset_position(p, @intCast(i8, self.car_size_at(p) - 1), go);
-            }
+        while (pos) |p| : (pos = self.offset_position(pos.?, 1, self.goal_orientation)) {
+            if (!self.field_occupied(p)) continue;
+            const co = self.car_orientation_at(p) catch unreachable;
+            if (co != self.goal_orientation) continue;
+
+            goal_cars += 1;
+            if (goal_cars > 1) return error.MultipleGoalCars;
+            const skip = self.car_size_at(p) catch unreachable;
+            pos = self.offset_position(p, @intCast(i8, skip - 1), self.goal_orientation);
         }
 
         std.debug.print("Resulting Board: {any} with size {}\n", .{ self, std.fmt.fmtIntSizeBin(@sizeOf(Board)) });
     }
 
-    // FIXME: returns Horizontal for leftmost Vertical goal.
-    fn goal_orientation(self: *Board) Orientation {
-        return if (self.goal_position % self.width == 0) Orientation.Horizontal else Orientation.Vertical;
-    }
-
     pub fn reached_goal(self: *Board) bool {
-        const o = self.goal_orientation();
-
-        const mask = switch (o) {
+        const mask = switch (self.goal_orientation) {
             Orientation.Vertical => &self.vertical_mask,
             Orientation.Horizontal => &self.horizontal_mask,
         };
 
-        return mask.get(self.offset_position(self.goal_position, -1, o)).occupied;
+        const goal_field = switch (self.goal_orientation) {
+            Orientation.Vertical => self.to_position(self.height - 1, self.goal_lane),
+            Orientation.Horizontal => self.to_position(self.goal_lane, self.width - 1),
+        };
+
+        return mask.get(goal_field).occupied;
     }
 
     pub fn is_legal_move(self: *Self, move: Move) bool {
         if (move.step == 0) return false;
         if (!self.field_occupied(move.pos)) return false;
 
-        const o = self.car_orientation_at(move.pos);
-        const sz = self.car_size_at(move.pos);
+        const o = self.car_orientation_at(move.pos) catch unreachable;
+        const sz = self.car_size_at(move.pos) catch unreachable;
 
         const sign = std.math.sign(move.step);
         var pos = switch (sign) {
@@ -311,14 +324,13 @@ pub const Board = struct {
     }
 
     fn step_limit(self: *Self, pos: u8, dir: Direction) i8 {
-        const o = self.car_orientation_at(pos);
-        const sz = self.car_size_at(pos);
+        const o = self.car_orientation_at(pos) catch unreachable;
+        const sz = self.car_size_at(pos) catch unreachable;
 
-        const sign = if (dir == Direction.Forward) 1 else -1;
+        const sign: i8 = if (dir == Direction.Forward) 1 else -1;
         var cpos = switch (dir) {
             Direction.Forward => self.offset_position(pos, @intCast(i8, sz), o),
             Direction.Backward => self.offset_position(pos, -1, o),
-            else => unreachable,
         };
 
         var step: i8 = 0;
@@ -344,8 +356,11 @@ pub const Board = struct {
     // or those that were checked by is_legal_move() beforehand.
     // The same of course also applies to undo_move().
     pub fn do_move(self: *Self, move: Move) void {
-        const o = self.car_orientation_at(move.pos);
-        const sz = self.car_size_at(move.pos);
+        const o = self.car_orientation_at(move.pos) catch unreachable;
+        // FIXME: Breaks when any other field than top part of car is passed.
+        // There should be a function that converts any position into a position
+        // representative of the car (top field).
+        const sz = self.car_size_at(move.pos) catch unreachable;
         const mask = switch (o) {
             Orientation.Vertical => &self.vertical_mask,
             Orientation.Horizontal => &self.horizontal_mask,
@@ -373,8 +388,8 @@ pub const Board = struct {
     }
 
     pub fn undo_move(self: *Board, move: Move) void {
-        const t = self.offset_position(move.pos, move.step, Orientation.Vertical);
-        const o = if (self.car_orientation_at(t.?) == Orientation.Vertical) Orientation.Vertical else Orientation.Horizontal;
+        const t = self.offset_position(move.pos, move.step, Orientation.Vertical) orelse return;
+        const o = self.car_orientation_at(t) catch return;
 
         const reverse: Move = .{
             .pos = self.offset_position(move.pos, move.step, o).?,
