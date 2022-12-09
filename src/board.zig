@@ -80,15 +80,14 @@ pub const Board = struct {
             Orientation.Horizontal => 1,
         };
 
-        if (pos + offset * step < 0) return null;
-        const target = @intCast(u8, pos + offset * step);
+        const target = pos + offset * step;
+        // takes care of vertical bounds check and any other oob situations
+        if (target < 0 or target >= self.size()) return null;
 
-        switch (o) {
-            Orientation.Vertical => if (self.extract_row(target) >= self.height) return null,
-            Orientation.Horizontal => if (self.extract_row(target) != self.extract_row(pos)) return null,
-        }
+        const clamped = @intCast(u8, target);
+        if (o == Orientation.Horizontal and self.extract_row(clamped) != self.extract_row(pos)) return null;
 
-        return target;
+        return clamped;
     }
 
     fn field_occupied(self: *Self, pos: u8) bool {
