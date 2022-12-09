@@ -338,6 +338,11 @@ pub const Board = struct {
         };
     }
 
+    // NOTE: Will try doing any move, even if it is illegal!
+    // Consequences include crashes and corrupted board states.
+    // This function should only be called with moves from generate_moves()
+    // or those that were checked by is_legal_move() beforehand.
+    // The same of course also applies to undo_move().
     pub fn do_move(self: *Self, move: Move) void {
         const o = self.car_orientation_at(move.pos);
         const sz = self.car_size_at(move.pos);
