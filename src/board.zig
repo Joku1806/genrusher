@@ -430,8 +430,11 @@ pub const Board = struct {
     }
 
     pub fn undo_move(self: *Board, move: Move) void {
-        const t = self.offset_position(move.pos, move.step, Orientation.Vertical) orelse return;
-        const o = self.car_orientation_at(t) catch return;
+        const o = blk: {
+            const t = self.offset_position(move.pos, move.step, Orientation.Vertical) orelse break :blk Orientation.Horizontal;
+            const oc = self.car_orientation_at(t) catch break :blk Orientation.Horizontal;
+            if (oc == Orientation.Vertical) break :blk Orientation.Vertical else break :blk Orientation.Horizontal;
+        };
 
         const reverse: Move = .{
             .pos = self.offset_position(move.pos, move.step, o).?,
