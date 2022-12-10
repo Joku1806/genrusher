@@ -327,7 +327,7 @@ pub const Board = struct {
         }
     }
 
-    pub fn reached_goal(self: *Board) bool {
+    pub fn reached_goal(self: *Self) bool {
         const mask = switch (self.goal_orientation) {
             Orientation.Vertical => &self.vertical_mask,
             Orientation.Horizontal => &self.horizontal_mask,
