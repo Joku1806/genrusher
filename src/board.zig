@@ -68,7 +68,7 @@ pub const Board = struct {
         };
     }
 
-    fn size(self: *Self) u8 {
+    fn size(self: Self) u8 {
         return @as(u8, self.width) * self.height;
     }
 
@@ -76,11 +76,11 @@ pub const Board = struct {
         return @as(u8, row) * self.width + column;
     }
 
-    fn extract_row(self: *Self, pos: u8) u4 {
+    fn extract_row(self: Self, pos: u8) u4 {
         return @intCast(u4, pos / self.width);
     }
 
-    fn extract_column(self: *Self, pos: u8) u4 {
+    fn extract_column(self: Self, pos: u8) u4 {
         return @intCast(u4, pos % self.width);
     }
 
@@ -100,13 +100,13 @@ pub const Board = struct {
         return clamped;
     }
 
-    fn field_occupied(self: *Self, pos: u8) bool {
+    fn field_occupied(self: Self, pos: u8) bool {
         if (pos >= self.size()) return false;
         return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
     }
 
     // FIXME: What to return for empty field?
-    fn car_orientation_at(self: *Self, pos: u8) BoardError!Orientation {
+    fn car_orientation_at(self: Self, pos: u8) BoardError!Orientation {
         if (pos >= self.size()) return BoardError.PositionOutOfBounds;
         if (!self.field_occupied(pos)) return BoardError.ExpectedOccupiedField;
         return if (self.vertical_mask.get(pos).occupied) Orientation.Vertical else Orientation.Horizontal;
@@ -128,6 +128,53 @@ pub const Board = struct {
         }
 
         return sz;
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+
+        var i: u8 = 0;
+        while (i < self.size()) : (i += 1) {
+            if (i % self.width == 0) {
+                try writer.writeAll("\n");
+            }
+
+            var o = self.car_orientation_at(i) catch {
+                try writer.writeAll("o");
+                continue;
+            };
+
+            var ch: u8 = blk: {
+                switch (o) {
+                    Orientation.Vertical => if (self.goal_orientation == Orientation.Vertical and self.extract_column(i) == self.goal_lane) {
+                        break :blk 'A';
+                    } else if (self.vertical_mask.get(i).pattern == 1) {
+                        break :blk '$';
+                    } else {
+                        break :blk '#';
+                    },
+                    Orientation.Horizontal => if (self.goal_orientation == Orientation.Horizontal and self.extract_row(i) == self.goal_lane) {
+                        break :blk 'A';
+                    } else if (self.horizontal_mask.get(i).pattern == 1) {
+                        break :blk '-';
+                    } else {
+                        break :blk '=';
+                    },
+                }
+            };
+
+            try writer.print("{u}", .{ch});
+        }
+
+        try writer.print("\nRelative Difficulty: {?}\nMinimum moves to solve: {?}", .{
+            self.relative_difficulty, self.min_moves,
+        });
     }
 
     fn parse_width(self: *Self, text: []const u8) error{InvalidFormat}!usize {
