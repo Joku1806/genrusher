@@ -349,17 +349,17 @@ pub const Board = struct {
         const sz = self.car_size_at(move.pos) catch unreachable;
 
         const sign = std.math.sign(move.step);
-        var pos = switch (sign) {
+        var start = switch (sign) {
             1 => self.offset_position(move.pos, @intCast(i8, sz), o),
             -1 => self.offset_position(move.pos, -1, o),
             else => unreachable,
-        };
-        const target = self.offset_position(move.pos, move.step, o);
-        if (target == null) return false;
+        } orelse return false;
+        const stop = self.offset_position(start, move.step, o) orelse return false;
 
-        while (pos) |p| : (pos = self.offset_position(pos.?, sign, o)) {
-            if (self.field_occupied(p)) return false;
-            if (p == target.?) return true;
+        var it: ?u8 = start;
+        while (it) |f| : (it = self.offset_position(it.?, sign, o)) {
+            if (f == stop) return true;
+            if (self.field_occupied(f)) return false;
         }
 
         return false;
