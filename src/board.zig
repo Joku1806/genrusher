@@ -252,8 +252,6 @@ pub const Board = struct {
             return ParseError.IllegalBoardDimensions;
         }
 
-        std.debug.print("Got board {s} with dimensions {}x{}, relative difficulty: {?}, length of minimal solution: {?}\n", .{ board_fen, self.width, self.height, self.relative_difficulty, self.min_moves });
-
         var seen_goal_car = false;
         var horz_pattern: u1 = 0;
         // Save the current vertical pattern for each row, as we do not iterate in vertical order.
@@ -295,8 +293,6 @@ pub const Board = struct {
 
             pattern.* = ~pattern.*;
 
-            std.debug.print("Parsed {} car '{c}' at position (x: {}, y: {}) with size {}\n", .{ o, c, self.extract_column(@intCast(u8, i)), self.extract_row(@intCast(u8, i)), sz });
-
             if (c == 'A') {
                 seen_goal_car = true;
                 // NOTE: Goal is always on the right/bottom side of the board
@@ -329,8 +325,6 @@ pub const Board = struct {
             const skip = self.car_size_at(p) catch unreachable;
             pos = self.offset_position(p, @intCast(i8, skip - 1), self.goal_orientation);
         }
-
-        std.debug.print("Resulting Board: {any} with size {}\n", .{ self, std.fmt.fmtIntSizeBin(@sizeOf(Board)) });
     }
 
     pub fn reached_goal(self: *Board) bool {
