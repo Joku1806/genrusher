@@ -20,6 +20,19 @@ pub const IDAstar = struct {
     brain: Brain,
     move_history: ArrayList(Move),
     bound: f32,
+    nodes_visited: usize,
+
+    fn search_limit(self: *Self) usize {
+        // This can be interpreted as meaning:
+        // On average, in every 4 moves we allow one move,
+        // that does not contribute to the solution.
+        const branching_factor = 4.0 / 3.0;
+        // It takes 51 moves to solve the longest Rush Hour puzzle
+        // (see https://www.michaelfogleman.com/rush/#HardestPuzzles)
+        const depth = @intToFloat(f64, self.board.min_moves orelse 51);
+
+        return @floatToInt(usize, pow(f64, branching_factor, depth));
+    }
 
     // FIXME: We wouldnt need the context hack, if we operated on boards in the first place.
     // The move history would then need to store board states as snapshots instead of moves.
@@ -58,9 +71,10 @@ pub const IDAstar = struct {
         self.bound = self.brain.evaluate_board(self.board);
 
         while (true) {
-            const t = self.search(0);
+            const t = self.search(0) orelse return false;
             if (self.board.reached_goal()) return true;
 
+            self.nodes_visited = 0;
             self.bound = t;
             while (self.move_history.items.len > 0) {
                 self.board.undo_move(self.move_history.pop());
@@ -70,7 +84,9 @@ pub const IDAstar = struct {
 
     // TODO: Needs a way to return failure if maximum move
     // capacity without finding a solution is reached.
-    fn search(self: *Self, current_cost: f32) f32 {
+    fn search(self: *Self, current_cost: f32) ?f32 {
+        if (self.nodes_visited > self.search_limit()) return null;
+
         const f = current_cost + self.brain.evaluate_board(self.board);
         if (f > self.bound or self.board.reached_goal()) return f;
 
@@ -79,8 +95,9 @@ pub const IDAstar = struct {
         for (it.next()) |move| {
             self.board.do_move(move);
             self.move_history.append(move);
+            self.nodes_visited += 1;
 
-            const t = self.search(current_cost + move.cost());
+            const t = self.search(current_cost + move.cost()) orelse return null;
             if (self.board.reached_goal()) return f;
             if (t > self.bound) return t;
 
