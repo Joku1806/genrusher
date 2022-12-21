@@ -35,31 +35,19 @@ pub const IDAstar = struct {
         return std.math.order(a, b);
     }
 
-    fn generate_moves(self: *Self) PriorityQueue(Move, {}, move_order) {
-        var ranked_moves = PriorityQueue(Move, {}, move_order).init(self.allocator);
-        var checked = AutoHashMap(u8, void).init(self.allocator);
+    fn generate_moves(self: *Self) PriorityQueue(Move, self, move_order) {
+        var ranked_moves = PriorityQueue(Move, self, move_order).init(self.allocator);
 
-        // TODO: Write board method returning car positions.
-        var i: u8 = 0;
-        while (i < self.board.size()) : (i += 1) {
-            if (checked.contains(i)) continue;
-            if (!self.board.occupied(i)) continue;
+        var positions = self.board.car_positions(self.allocator);
+        defer positions.deinit();
 
-            const range = self.board.calculate_move_range(i);
+        for (positions.items) |pos| {
+            const range = self.board.calculate_move_range(pos);
             if (range.min_step == range.max_step) continue;
 
-            var j = range.min_step;
-            while (j <= range.max_step) {
-                ranked_moves.add(.{ .pos = i, .step = j });
-            }
-
-            const o = self.board.car_orientation_at(pos);
-            var sz = self.board.car_size_at(pos);
-
-            var pos = i;
-            while (sz > 0) : (sz -= 1) {
-                checked.put(pos, {});
-                pos = self.board.offset_position(pos, 1, o);
+            var i = range.min_step;
+            while (i <= range.max_step) {
+                ranked_moves.add(.{ .pos = pos, .step = i });
             }
         }
 

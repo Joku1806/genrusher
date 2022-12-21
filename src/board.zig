@@ -454,6 +454,31 @@ pub const Board = struct {
         self.do_move(reverse);
     }
 
+    pub fn car_positions(self: *Self, allocator: std.mem.Allocator) std.ArrayList(u8) {
+        var checked = std.AutoHashMap(u8, void).init(allocator);
+        defer checked.deinit();
+
+        var positions = std.ArrayList(u8).init(allocator);
+
+        var i: u8 = 0;
+        while (i < self.size()) : (i += 1) {
+            if (checked.contains(i)) continue;
+            if (!self.occupied(i)) continue;
+            positions.append(i);
+
+            const o = self.board.car_orientation_at(i);
+            var sz = self.board.car_size_at(i);
+
+            var pos = i;
+            while (sz > 0) : (sz -= 1) {
+                checked.put(pos, {});
+                pos = self.board.offset_position(pos, 1, o);
+            }
+        }
+
+        return positions;
+    }
+
     // fn heuristic_blockers_lower_bound(self: *Board) f32 {}
     // fn heuristic_goal_distance(self: *Board) f32 {}
     // fn heuristic_free_space(self: *Board) f32 {}
