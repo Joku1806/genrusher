@@ -439,7 +439,7 @@ pub const Board = struct {
         }
     }
 
-    pub fn undo_move(self: *Board, move: Move) void {
+    pub fn undo_move(self: *Self, move: Move) void {
         const o = blk: {
             const t = self.offset_position(move.pos, move.step, Orientation.Vertical) orelse break :blk Orientation.Horizontal;
             const oc = self.car_orientation_at(t) catch break :blk Orientation.Horizontal;
