@@ -17,7 +17,17 @@ const Direction = enum {
     Backward,
 };
 
-pub const Move = struct { pos: u8, step: i8 };
+pub const Move = struct {
+    const Self = @This();
+
+    pos: u8,
+    step: i8,
+
+    pub fn cost(self: Self) u8 {
+        return std.math.absInt(self.step);
+    }
+};
+
 pub const MoveRange = struct { pos: u8, min_step: i8, max_step: i8 };
 
 const ParseError = error{
