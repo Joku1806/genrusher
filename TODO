@@ -1,0 +1,49 @@
+- Tests für IDA* Algorithmus schreiben
+
+- Agent implementieren
+	- neues Problem aus BoardRepository auswählen
+	- Fitness Funktion
+	- Rückschreiben in BoardRepository, falls verbesserte Lösung
+
+- Brain implementieren
+	- sollte gegeben ein bestimmtes Board zurückgeben, wie viele Schritte es vermutlich noch zur Lösung braucht
+	- braucht ArrayList aus Regeln
+	- Regeln bestehen aus einer booleschen Condition und einem arithmetischen Ausdruck
+	- Regeln werden nacheinander auf Board angewendet:
+	  var result: f32 = 0.0;
+	  if (condition1(board)) result += expression1(board);
+	  if (condition2(board)) result += expression2(board);
+	  ...
+	  if (conditionn(board)) result += expressionn(board);
+	  return result;
+	- Conditions und Expressions brauchen AST
+
+- AST implementieren
+	- veränderbaren k-ary Baum
+	- Methode typecheck(), um zu prüfen ob Syntax valide ist
+	- Methode is_boolean_expression(), um zu prüfen ob AST ein boolescher Ausdruck ist
+	- Methode is_arithmetic_expression(), um zu prüfen ob AST ein arithmetischer Ausdruck ist
+	- Methode normalize(), um AST auf eine kanonische Repräsentation zu normalisieren
+		- De Morgan Gesetze, andere Äquivalenzen
+		- Constant Folding
+		- Dead Branch Elimination
+		- aufsplitten und sortieren von Terminal Values (Leaf Nodes) anhand von Hash
+	- Methode evaluate(Board), um AST auszuwerten
+
+- veränderbaren k-ary Baum implementieren oder online finden
+
+- Generation Manager schreiben
+	- braucht Liste an Agenten
+	- Tournament Selection Algorithmus schreiben
+	- Crossover Algorithmus für 2 Agenten schreiben
+		- Methode für Kombination, unveränderte Übernahme von Regeln finden
+		- Methode schreiben, um Ähnlichkeit von zwei Regeln zu bestimmen
+			- statische Analyse von ähnlichen Teilen nach Normalisierung
+			- Anwendung von Regeln auf n Boards, Summe von MSE als Ähnlichkeitsmaß
+		- vielleicht Maß für Effizienz von Regeln, Beitrag zu guten Lösungen finden
+			- braucht wahrscheinlich extra Code im Agent
+	- Mutations Algorithmus für Agent schreiben
+
+- dump Methode für Board Repository schreiben
+	- schreibt alle Boards in Liste in Datei
+	- Board braucht Methode, um kanonische Repräsentation in String zu schreiben
