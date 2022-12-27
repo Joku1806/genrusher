@@ -1,9 +1,22 @@
 - Tests für IDA* Algorithmus schreiben
 
-- Agent implementieren
-	- neues Problem aus BoardRepository auswählen
-	- Fitness Funktion
-	- Rückschreiben in BoardRepository, falls verbesserte Lösung
+- dump Methode für Board Repository schreiben
+	- schreibt alle Boards in Liste in Datei
+	- Board braucht Methode, um kanonische Repräsentation in String zu schreiben
+
+- veränderbaren k-ary Baum implementieren oder online finden
+
+- AST implementieren
+	- veränderbaren k-ary Baum
+	- Methode typecheck(), um zu prüfen ob Syntax valide ist
+	- Methode is_boolean_expression(), um zu prüfen ob AST ein boolescher Ausdruck ist
+	- Methode is_arithmetic_expression(), um zu prüfen ob AST ein arithmetischer Ausdruck ist
+	- Methode normalize(), um AST auf eine kanonische Repräsentation zu normalisieren
+		- De Morgan Gesetze, andere Äquivalenzen
+		- Constant Folding
+		- Dead Branch Elimination
+		- aufsplitten und sortieren von Terminal Values (Leaf Nodes) anhand von Hash
+	- Methode evaluate(Board), um AST auszuwerten
 
 - Brain implementieren
 	- sollte gegeben ein bestimmtes Board zurückgeben, wie viele Schritte es vermutlich noch zur Lösung braucht
@@ -18,19 +31,10 @@
 	  return result;
 	- Conditions und Expressions brauchen AST
 
-- AST implementieren
-	- veränderbaren k-ary Baum
-	- Methode typecheck(), um zu prüfen ob Syntax valide ist
-	- Methode is_boolean_expression(), um zu prüfen ob AST ein boolescher Ausdruck ist
-	- Methode is_arithmetic_expression(), um zu prüfen ob AST ein arithmetischer Ausdruck ist
-	- Methode normalize(), um AST auf eine kanonische Repräsentation zu normalisieren
-		- De Morgan Gesetze, andere Äquivalenzen
-		- Constant Folding
-		- Dead Branch Elimination
-		- aufsplitten und sortieren von Terminal Values (Leaf Nodes) anhand von Hash
-	- Methode evaluate(Board), um AST auszuwerten
-
-- veränderbaren k-ary Baum implementieren oder online finden
+- Agent implementieren
+	- neues Problem aus BoardRepository auswählen
+	- Fitness Funktion
+	- Rückschreiben in BoardRepository, falls verbesserte Lösung
 
 - Generation Manager schreiben
 	- braucht Liste an Agenten
@@ -43,7 +47,3 @@
 		- vielleicht Maß für Effizienz von Regeln, Beitrag zu guten Lösungen finden
 			- braucht wahrscheinlich extra Code im Agent
 	- Mutations Algorithmus für Agent schreiben
-
-- dump Methode für Board Repository schreiben
-	- schreibt alle Boards in Liste in Datei
-	- Board braucht Methode, um kanonische Repräsentation in String zu schreiben
