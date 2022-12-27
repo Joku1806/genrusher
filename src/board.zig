@@ -179,6 +179,35 @@ pub const Board = struct {
         });
     }
 
+    pub fn fen(self: Self, allocator: std.mem.Allocator) ![]const u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+
+        const writer = list.writer();
+
+        try writer.print("{}:{}:", .{ self.width, self.height });
+
+        if (self.relative_difficulty) |val| {
+            try writer.print("{}:", .{val});
+        } else {
+            try writer.writeAll("?:");
+        }
+
+        if (self.min_moves) |val| {
+            try writer.print("{}:", .{val});
+        } else {
+            try writer.writeAll("?:");
+        }
+
+        var i: u8 = 0;
+        while (i < self.size()) : (i += 1) {
+            var ch = self.field_character_at(i);
+            try writer.print("{u}", .{ch});
+        }
+
+        return list.toOwnedSlice();
+    }
+
     fn parse_width(self: *Self, text: []const u8) error{InvalidFormat}!usize {
         const wsep = std.mem.indexOf(u8, text, ":") orelse return error.InvalidFormat;
         if (wsep == 0) return error.InvalidFormat;
