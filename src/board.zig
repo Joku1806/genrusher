@@ -140,6 +140,21 @@ pub const Board = struct {
         return sz;
     }
 
+    fn field_character_at(self: Self, pos: u8) u8 {
+        var o = self.car_orientation_at(pos) catch return 'o';
+
+        if (o == Orientation.Vertical and o == self.goal_orientation and self.extract_column(pos) == self.goal_lane or
+            o == Orientation.Horizontal and o == self.goal_orientation and self.extract_row(pos) == self.goal_lane)
+        {
+            return 'A';
+        }
+
+        switch (o) {
+            Orientation.Vertical => return if (self.vertical_mask.get(pos).pattern == 0) 'B' else 'C',
+            Orientation.Horizontal => return if (self.horizontal_mask.get(pos).pattern == 0) 'D' else 'E',
+        }
+    }
+
     pub fn format(
         self: Self,
         comptime fmt: []const u8,
@@ -155,30 +170,7 @@ pub const Board = struct {
                 try writer.writeAll("\n");
             }
 
-            var o = self.car_orientation_at(i) catch {
-                try writer.writeAll("o");
-                continue;
-            };
-
-            var ch: u8 = blk: {
-                switch (o) {
-                    Orientation.Vertical => if (self.goal_orientation == Orientation.Vertical and self.extract_column(i) == self.goal_lane) {
-                        break :blk 'A';
-                    } else if (self.vertical_mask.get(i).pattern == 1) {
-                        break :blk '$';
-                    } else {
-                        break :blk '#';
-                    },
-                    Orientation.Horizontal => if (self.goal_orientation == Orientation.Horizontal and self.extract_row(i) == self.goal_lane) {
-                        break :blk 'A';
-                    } else if (self.horizontal_mask.get(i).pattern == 1) {
-                        break :blk '-';
-                    } else {
-                        break :blk '=';
-                    },
-                }
-            };
-
+            var ch = self.field_character_at(i);
             try writer.print("{u}", .{ch});
         }
 
