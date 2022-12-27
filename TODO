@@ -1,8 +1,5 @@
 - Tests für IDA* Algorithmus schreiben
-
-- dump Methode für Board Repository schreiben
-	- schreibt alle Boards in Liste in Datei
-	- Board braucht Methode, um kanonische Repräsentation in String zu schreiben
+- Tests für Board Repository schreiben
 
 - veränderbaren k-ary Baum implementieren oder online finden
 
