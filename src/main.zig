@@ -1,5 +1,6 @@
 const std = @import("std");
 const board = @import("board.zig");
+const brain = @import("brain.zig");
 
 pub fn main() anyerror!void {
     const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
@@ -17,5 +18,12 @@ pub fn main() anyerror!void {
         b.undo_move(m);
     }
 
-    std.debug.print("Board after undoing Move: {any}", .{b});
+    std.debug.print("Board after undoing Move: {any}\n", .{b});
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var br = try brain.Brain.init(arena.allocator());
+
+    for (br.rules.items) |*rule, i| {
+        std.debug.print("Rule {} has boolean condition: {}, arithmetic expression: {}\n", .{ i, rule.condition.program, rule.expression.program });
+    }
 }
