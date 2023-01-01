@@ -46,8 +46,15 @@ const BoardError = error{
 };
 
 const Field = packed struct {
-    occupied: bool = false, // Checks if the field is occupied by a car. There is no separate flag needed for the goal car, since it will be the only one in its lane and the orientation can be deduced by the goal position.
-    pattern: u1 = 0, // Since two cars on a lane can't swap places, alternating this bit between cars provides a memory efficient way of distinguishing them. This is only possible because the Board uses a separate horizontal and vertical mask.
+    // Checks if the field is occupied by a car.
+    // There is no separate flag needed for the goal car,
+    // since it will be the only one in its lane.
+    occupied: bool = false,
+    // Since two cars in a lane can't swap places,
+    // alternating this bit between cars provides a memory
+    // efficient way of distinguishing them. This is only possible
+    // because the Board uses a separate horizontal and vertical mask.
+    pattern: u1 = 0,
 };
 
 pub const Board = struct {
@@ -96,8 +103,8 @@ pub const Board = struct {
 
     fn offset_position(self: *Self, pos: u8, step: i8, o: Orientation) ?u8 {
         const offset: i16 = switch (o) {
-            Orientation.Vertical => self.width,
-            Orientation.Horizontal => 1,
+            .Vertical => self.width,
+            .Horizontal => 1,
         };
 
         const target = pos + offset * step;
@@ -105,7 +112,7 @@ pub const Board = struct {
         if (target < 0 or target >= self.size()) return null;
 
         const clamped = @intCast(u8, target);
-        if (o == Orientation.Horizontal and self.extract_row(clamped) != self.extract_row(pos)) return null;
+        if (o == .Horizontal and self.extract_row(clamped) != self.extract_row(pos)) return null;
 
         return clamped;
     }
@@ -119,15 +126,15 @@ pub const Board = struct {
     fn car_orientation_at(self: Self, pos: u8) BoardError!Orientation {
         if (pos >= self.size()) return BoardError.PositionOutOfBounds;
         if (!self.field_occupied(pos)) return BoardError.ExpectedOccupiedField;
-        return if (self.vertical_mask.get(pos).occupied) Orientation.Vertical else Orientation.Horizontal;
+        return if (self.vertical_mask.get(pos).occupied) .Vertical else .Horizontal;
     }
 
     fn car_size_at(self: *Self, pos: u8) BoardError!usize {
         const o = try self.car_orientation_at(pos);
         var sz: usize = 0;
         const mask = switch (o) {
-            Orientation.Vertical => &self.vertical_mask,
-            Orientation.Horizontal => &self.horizontal_mask,
+            .Vertical => &self.vertical_mask,
+            .Horizontal => &self.horizontal_mask,
         };
 
         const pattern = mask.get(pos).pattern;
@@ -143,15 +150,15 @@ pub const Board = struct {
     fn field_character_at(self: Self, pos: u8) u8 {
         var o = self.car_orientation_at(pos) catch return 'o';
 
-        if (o == Orientation.Vertical and o == self.goal_orientation and self.extract_column(pos) == self.goal_lane or
-            o == Orientation.Horizontal and o == self.goal_orientation and self.extract_row(pos) == self.goal_lane)
+        if (o == .Vertical and o == self.goal_orientation and self.extract_column(pos) == self.goal_lane or
+            o == .Horizontal and o == self.goal_orientation and self.extract_row(pos) == self.goal_lane)
         {
             return 'A';
         }
 
         switch (o) {
-            Orientation.Vertical => return if (self.vertical_mask.get(pos).pattern == 0) 'B' else 'C',
-            Orientation.Horizontal => return if (self.horizontal_mask.get(pos).pattern == 0) 'D' else 'E',
+            .Vertical => return if (self.vertical_mask.get(pos).pattern == 0) 'B' else 'C',
+            .Horizontal => return if (self.horizontal_mask.get(pos).pattern == 0) 'D' else 'E',
         }
     }
 
@@ -295,16 +302,16 @@ pub const Board = struct {
                 continue;
             }
 
-            const o = if (c != board_fen[i + 1] or i + 1 == self.width) Orientation.Vertical else Orientation.Horizontal;
+            const o: Orientation = if (c != board_fen[i + 1] or i + 1 == self.width) .Vertical else .Horizontal;
 
             const pattern = switch (o) {
-                Orientation.Horizontal => &horz_pattern,
-                Orientation.Vertical => &vert_patterns[i % self.width],
+                .Horizontal => &horz_pattern,
+                .Vertical => &vert_patterns[i % self.width],
             };
 
             const mask = switch (o) {
-                Orientation.Horizontal => &self.horizontal_mask,
-                Orientation.Vertical => &self.vertical_mask,
+                .Horizontal => &self.horizontal_mask,
+                .Vertical => &self.vertical_mask,
             };
 
             const sz = blk: {
@@ -330,8 +337,8 @@ pub const Board = struct {
                 // (depending on the orientation) and in the lane of the goal car.
                 self.goal_orientation = o;
                 self.goal_lane = switch (o) {
-                    Orientation.Vertical => self.extract_column(@intCast(u8, i)),
-                    Orientation.Horizontal => self.extract_row(@intCast(u8, i)),
+                    .Vertical => self.extract_column(@intCast(u8, i)),
+                    .Horizontal => self.extract_row(@intCast(u8, i)),
                 };
             }
         }
@@ -342,8 +349,8 @@ pub const Board = struct {
 
         var goal_cars: usize = 0;
         var pos: ?u8 = switch (self.goal_orientation) {
-            Orientation.Horizontal => self.to_position(self.goal_lane, 0),
-            Orientation.Vertical => self.to_position(0, self.goal_lane),
+            .Horizontal => self.to_position(self.goal_lane, 0),
+            .Vertical => self.to_position(0, self.goal_lane),
         };
 
         while (pos) |p| : (pos = self.offset_position(pos.?, 1, self.goal_orientation)) {
@@ -360,13 +367,13 @@ pub const Board = struct {
 
     pub fn reached_goal(self: *Self) bool {
         const mask = switch (self.goal_orientation) {
-            Orientation.Vertical => &self.vertical_mask,
-            Orientation.Horizontal => &self.horizontal_mask,
+            .Vertical => &self.vertical_mask,
+            .Horizontal => &self.horizontal_mask,
         };
 
         const goal_field = switch (self.goal_orientation) {
-            Orientation.Vertical => self.to_position(self.height - 1, self.goal_lane),
-            Orientation.Horizontal => self.to_position(self.goal_lane, self.width - 1),
+            .Vertical => self.to_position(self.height - 1, self.goal_lane),
+            .Horizontal => self.to_position(self.goal_lane, self.width - 1),
         };
 
         return mask.get(goal_field).occupied;
@@ -435,8 +442,8 @@ pub const Board = struct {
         // representative of the car (top field).
         const sz = self.car_size_at(move.pos) catch unreachable;
         const mask = switch (o) {
-            Orientation.Vertical => &self.vertical_mask,
-            Orientation.Horizontal => &self.horizontal_mask,
+            .Vertical => &self.vertical_mask,
+            .Horizontal => &self.horizontal_mask,
         };
 
         var pos = move.pos;
@@ -461,10 +468,10 @@ pub const Board = struct {
     }
 
     pub fn undo_move(self: *Self, move: Move) void {
-        const o = blk: {
-            const t = self.offset_position(move.pos, move.step, Orientation.Vertical) orelse break :blk Orientation.Horizontal;
-            const oc = self.car_orientation_at(t) catch break :blk Orientation.Horizontal;
-            if (oc == Orientation.Vertical) break :blk Orientation.Vertical else break :blk Orientation.Horizontal;
+        const o: Orientation = blk: {
+            const t = self.offset_position(move.pos, move.step, .Vertical) orelse break :blk .Horizontal;
+            const oc = self.car_orientation_at(t) catch break :blk .Horizontal;
+            if (oc == .Vertical) break :blk .Vertical else break :blk .Horizontal;
         };
 
         const reverse: Move = .{
@@ -500,12 +507,30 @@ pub const Board = struct {
         return positions;
     }
 
-    // fn heuristic_blockers_lower_bound(self: *Board) f32 {}
-    // fn heuristic_goal_distance(self: *Board) f32 {}
-    // fn heuristic_free_space(self: *Board) f32 {}
-    // fn heuristic_initial_board_distance(self: *Board, initial: *Board) f32 {}
-    // fn heuristic_difficulty(self: *Self) f32 {}
-    // fn heuristic_move_bound(self: *Self) f32 {}
+    pub fn heuristic_blockers_lower_bound(self: *Self) f32 {
+        _ = self;
+        return 0.0;
+    }
+
+    pub fn heuristic_goal_distance(self: *Self) f32 {
+        _ = self;
+        return 0.0;
+    }
+
+    pub fn heuristic_free_space(self: *Board) f32 {
+        _ = self;
+        return 0.0;
+    }
+
+    pub fn heuristic_difficulty(self: *Self) f32 {
+        _ = self;
+        return 0.0;
+    }
+
+    pub fn heuristic_move_bound(self: *Self) f32 {
+        _ = self;
+        return 0.0;
+    }
 };
 
 test "parsing board info missing" {
@@ -579,17 +604,17 @@ test "position offsets" {
     var b = Board.init();
     b.parse(text) catch unreachable;
 
-    try expect(b.offset_position(0, -1, Orientation.Vertical) == null);
-    try expect(b.offset_position(0, -20, Orientation.Vertical) == null);
-    try expect(b.offset_position(0, -1, Orientation.Horizontal) == null);
-    try expect(b.offset_position(0, -20, Orientation.Horizontal) == null);
+    try expect(b.offset_position(0, -1, .Vertical) == null);
+    try expect(b.offset_position(0, -20, .Vertical) == null);
+    try expect(b.offset_position(0, -1, .Horizontal) == null);
+    try expect(b.offset_position(0, -20, .Horizontal) == null);
 
-    try expect(b.offset_position(1, 2, Orientation.Vertical).? == 9);
-    try expect(b.offset_position(3, 20, Orientation.Vertical) == null);
-    try expect(b.offset_position(1, 2, Orientation.Horizontal).? == 3);
-    try expect(b.offset_position(6, 20, Orientation.Horizontal) == null);
+    try expect(b.offset_position(1, 2, .Vertical).? == 9);
+    try expect(b.offset_position(3, 20, .Vertical) == null);
+    try expect(b.offset_position(1, 2, .Horizontal).? == 3);
+    try expect(b.offset_position(6, 20, .Horizontal) == null);
 
-    try expect(b.offset_position(16, -1, Orientation.Vertical).? == 12);
+    try expect(b.offset_position(16, -1, .Vertical).? == 12);
 }
 
 test "field occupied" {
@@ -608,18 +633,18 @@ test "car orientation" {
     var b = Board.init();
     b.parse(text) catch unreachable;
 
-    try expect(b.car_orientation_at(0) catch unreachable == Orientation.Vertical);
-    try expect(b.car_orientation_at(1) catch unreachable == Orientation.Horizontal);
-    try expect(b.car_orientation_at(9) catch unreachable == Orientation.Vertical);
-    try expect(b.car_orientation_at(10) catch unreachable == Orientation.Horizontal);
-    try expect(b.car_orientation_at(12) catch unreachable == Orientation.Vertical);
-    try expect(b.car_orientation_at(13) catch unreachable == Orientation.Horizontal);
-    try expect(b.car_orientation_at(20) catch unreachable == Orientation.Vertical);
-    try expect(b.car_orientation_at(21) catch unreachable == Orientation.Horizontal);
-    try expect(b.car_orientation_at(23) catch unreachable == Orientation.Vertical);
-    try expect(b.car_orientation_at(24) catch unreachable == Orientation.Horizontal);
-    try expect(b.car_orientation_at(30) catch unreachable == Orientation.Horizontal);
-    try expect(b.car_orientation_at(32) catch unreachable == Orientation.Horizontal);
+    try expect(b.car_orientation_at(0) catch unreachable == .Vertical);
+    try expect(b.car_orientation_at(1) catch unreachable == .Horizontal);
+    try expect(b.car_orientation_at(9) catch unreachable == .Vertical);
+    try expect(b.car_orientation_at(10) catch unreachable == .Horizontal);
+    try expect(b.car_orientation_at(12) catch unreachable == .Vertical);
+    try expect(b.car_orientation_at(13) catch unreachable == .Horizontal);
+    try expect(b.car_orientation_at(20) catch unreachable == .Vertical);
+    try expect(b.car_orientation_at(21) catch unreachable == .Horizontal);
+    try expect(b.car_orientation_at(23) catch unreachable == .Vertical);
+    try expect(b.car_orientation_at(24) catch unreachable == .Horizontal);
+    try expect(b.car_orientation_at(30) catch unreachable == .Horizontal);
+    try expect(b.car_orientation_at(32) catch unreachable == .Horizontal);
     try expectError(BoardError.ExpectedOccupiedField, b.car_orientation_at(7));
     try expectError(BoardError.PositionOutOfBounds, b.car_orientation_at(55));
 }
@@ -713,7 +738,7 @@ test "move generation" {
 
 test "goal orientation" {
     const texts = [_][]const u8{ "2:2:?:?:AAoo", "2:2:?:?:ooAA", "2:2:?:?:AoAo", "2:2:?:?:oAoA" };
-    const expected_os = [_]Orientation{ Orientation.Horizontal, Orientation.Horizontal, Orientation.Vertical, Orientation.Vertical };
+    const expected_os = [_]Orientation{ .Horizontal, .Horizontal, .Vertical, .Vertical };
 
     var i: usize = 0;
     while (i < texts.len) : (i += 1) {
