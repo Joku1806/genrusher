@@ -1,11 +1,13 @@
 - Tests für IDA* Algorithmus schreiben
 - Tests für Board Repository schreiben
 
+- Board Heuristiken implementieren
+
 - veränderbaren k-ary Baum implementieren oder online finden
 
 - AST implementieren
 	- veränderbaren k-ary Baum
-	- Methode typecheck(), um zu prüfen ob Syntax valide ist
+	- Methode is_syntactically_valid(), um zu prüfen ob Syntax valide ist
 	- Methode is_boolean_expression(), um zu prüfen ob AST ein boolescher Ausdruck ist
 	- Methode is_arithmetic_expression(), um zu prüfen ob AST ein arithmetischer Ausdruck ist
 	- Methode normalize(), um AST auf eine kanonische Repräsentation zu normalisieren
