@@ -16,9 +16,7 @@ const BoardRepository = struct {
     entries: ArrayList(RepositoryEntry),
     prng: std.rand.DefaultPrng,
 
-    fn init() Self {
-        const allocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-
+    fn init(allocator: std.mem.Allocator) Self {
         var prng = std.rand.DefaultPrng.init(blk: {
             var seed: u64 = undefined;
             try std.os.getrandom(std.mem.asBytes(&seed));
