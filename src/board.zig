@@ -122,7 +122,6 @@ pub const Board = struct {
         return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
     }
 
-    // FIXME: What to return for empty field?
     fn car_orientation_at(self: *const Self, pos: u8) BoardError!Orientation {
         if (pos >= self.size()) return BoardError.PositionOutOfBounds;
         if (!self.field_occupied(pos)) return BoardError.ExpectedOccupiedField;
@@ -483,6 +482,7 @@ pub const Board = struct {
     }
 
     pub fn car_positions(self: *const Self, allocator: std.mem.Allocator) std.ArrayList(u8) {
+        // FIXME: Use a bitset instead
         var checked = std.AutoHashMap(u8, void).init(allocator);
         defer checked.deinit();
 
