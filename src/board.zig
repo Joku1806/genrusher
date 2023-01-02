@@ -507,29 +507,122 @@ pub const Board = struct {
         return positions;
     }
 
+    // Computes a lower-bound estimate of the number of moves required
+    // to move each vehicle out of the goal car’s path. This has to be done
+    // recursively for the vehicles blocking these vehicles, and so on. There
+    // are also some redundancy checks needed to avoid counting the same
+    // vehicle more than once. When having to choose between two possible direction
+    // of moving a vehicle, we compute both and retain the minimal value.
     pub fn heuristic_blockers_lower_bound(self: *Self) f32 {
         _ = self;
         return 0.0;
     }
 
+    // Counts each vehicles Manhattan distance from a deduced goal board
+    // containing a clear path to the goal, where all vehicles (and vehicles
+    // blocking them) have been forcibly positioned in possible locations in
+    // which they are no longer blocking the goal car
+    // NOTE: How to deduce the goal board? The paper says this part required
+    // some "complex reasoning" for doing this, but doesn't elaborate further.
     pub fn heuristic_goal_distance(self: *Self) f32 {
         _ = self;
         return 0.0;
     }
 
-    pub fn heuristic_free_space(self: *Board) f32 {
+    // Same as GoalDistance, but also adds number of vehicles between each
+    // car and its designated location.
+    pub fn heuristic_hybrid(self: *Self) f32 {
         _ = self;
         return 0.0;
     }
 
-    pub fn heuristic_difficulty(self: *Self) f32 {
+    // Did the last move taken position the vehicle at a location that no other
+    // vehicle can occupy?
+    // FIXME: Brain needs the last move as context
+    pub fn heuristic_is_move_to_secluded(self: *Self, last_move: Move) bool {
+        _ = self;
+        _ = last_move;
+        return 0.0;
+    }
+
+    // Did the last move made add new possible moves?
+    pub fn heuristic_is_releasing_move(self: *Self, last_move: Move) bool {
+        _ = self;
+        _ = last_move;
+        return 0.0;
+    }
+
+    // FIXME: Brain needs the initial board as context
+    pub fn heuristic_initial_board_distance(self: *Self, initial: *Self) f32 {
+        _ = self;
+        _ = initial;
+        return 0.0;
+    }
+
+    pub fn heuristic_phase_by_distance(self: *Self, initial: *Self) f32 {
+        const initial_distance = self.heuristic_initial_board_distance(initial);
+        const goal_distance = self.heuristic_goal_distance();
+
+        return initial_distance / (initial_distance + goal_distance);
+    }
+
+    pub fn heuristic_phase_by_blockers(self: *Self, initial: *Self) f32 {
+        const initial_distance = self.heuristic_initial_board_distance(initial);
+        const blockers = self.heuristic_blockers_lower_bound();
+
+        return initial_distance / (initial_distance + blockers);
+    }
+
+    // The number of nodes expanded from the parent of the current node.
+    // NOTE: The paper isn't really clear on what this is supposed to mean.
+    // I would assume it is supposed to be the number of other moves that
+    // were tried before this one, so essentially the ranking of this move
+    // by the brain.
+    // In this case the brain would somehow need to relay this information
+    // to this function, but I don't really know how you would do that.
+    pub fn heuristic_number_of_siblings(self: *Self) f32 {
         _ = self;
         return 0.0;
     }
 
-    pub fn heuristic_move_bound(self: *Self) f32 {
-        _ = self;
-        return 0.0;
+    // Returns the difficulty of solving the puzzle as a number in [0, 1].
+    // If a difficulty estimate (using the ratio of solves / total attempts)
+    // is known, this will be used. Otherwise, an estimated difficulty will
+    // be calculated using the estimated number of moves needed to solve the puzzle.
+    // NOTE: The first case can be wildly unreliable, if the number of attempted solves
+    // is low. Maybe there should be a single heuristic instead, which combines both cases.
+    pub fn heuristic_difficulty(self: *const Self) f32 {
+        if (self.relative_difficulty) |diff| return diff;
+        // NOTE: I assume a normal distribution here, so the best guess
+        // is a perfectly average puzzle ;)
+        if (self.min_moves == null) return 0.5;
+
+        // FIXME: Needs to be adjusted to my definition of moves
+        // as the number of fields to be crossed, instead of the
+        // flat move count, from where this number came from.
+        // NOTE: Maybe this should not be done, since the number
+        // of crossed fields has no effect on the computational
+        // difficulty of the puzzle, because we allow multi-step
+        // moves to be made. In this case, maybe the move definition
+        // should be changed?
+        const hardest_puzzle_solution_len: comptime_int = 51.0;
+        return self.min_moves.? / hardest_puzzle_solution_len;
+    }
+
+    // Original heuristic, not specified in the paper
+    // Returns the number of possible moves relative to the board size.
+    pub fn heuristic_free_space(self: *const Self) f32 {
+        var positions = self.board.car_positions(self.allocator);
+        defer positions.deinit();
+
+        var nmoves: usize = 0;
+        for (positions.items) |pos| {
+            const range = self.board.calculate_move_range(pos);
+            if (range.min_step == range.max_step) continue;
+            nmoves += std.math.absInt(range.max_step - range.min_step);
+        }
+
+        return nmoves / self.size();
     }
 };
 
