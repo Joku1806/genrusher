@@ -85,23 +85,23 @@ pub const Board = struct {
         };
     }
 
-    fn size(self: Self) u8 {
+    fn size(self: *const Self) u8 {
         return @as(u8, self.width) * self.height;
     }
 
-    fn to_position(self: *Self, row: u4, column: u4) u8 {
+    fn to_position(self: *const Self, row: u4, column: u4) u8 {
         return @as(u8, row) * self.width + column;
     }
 
-    fn extract_row(self: Self, pos: u8) u4 {
+    fn extract_row(self: *const Self, pos: u8) u4 {
         return @intCast(u4, pos / self.width);
     }
 
-    fn extract_column(self: Self, pos: u8) u4 {
+    fn extract_column(self: *const Self, pos: u8) u4 {
         return @intCast(u4, pos % self.width);
     }
 
-    fn offset_position(self: *Self, pos: u8, step: i8, o: Orientation) ?u8 {
+    fn offset_position(self: *const Self, pos: u8, step: i8, o: Orientation) ?u8 {
         const offset: i16 = switch (o) {
             .Vertical => self.width,
             .Horizontal => 1,
@@ -117,19 +117,19 @@ pub const Board = struct {
         return clamped;
     }
 
-    fn field_occupied(self: Self, pos: u8) bool {
+    fn field_occupied(self: *const Self, pos: u8) bool {
         if (pos >= self.size()) return false;
         return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
     }
 
     // FIXME: What to return for empty field?
-    fn car_orientation_at(self: Self, pos: u8) BoardError!Orientation {
+    fn car_orientation_at(self: *const Self, pos: u8) BoardError!Orientation {
         if (pos >= self.size()) return BoardError.PositionOutOfBounds;
         if (!self.field_occupied(pos)) return BoardError.ExpectedOccupiedField;
         return if (self.vertical_mask.get(pos).occupied) .Vertical else .Horizontal;
     }
 
-    fn car_size_at(self: *Self, pos: u8) BoardError!usize {
+    fn car_size_at(self: *const Self, pos: u8) BoardError!usize {
         const o = try self.car_orientation_at(pos);
         var sz: usize = 0;
         const mask = switch (o) {
@@ -147,7 +147,7 @@ pub const Board = struct {
         return sz;
     }
 
-    fn field_character_at(self: Self, pos: u8) u8 {
+    fn field_character_at(self: *const Self, pos: u8) u8 {
         var o = self.car_orientation_at(pos) catch return 'o';
 
         if (o == .Vertical and o == self.goal_orientation and self.extract_column(pos) == self.goal_lane or
@@ -186,7 +186,7 @@ pub const Board = struct {
         });
     }
 
-    pub fn fen(self: Self, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn fen(self: *const Self, allocator: std.mem.Allocator) ![]const u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
 
@@ -365,7 +365,7 @@ pub const Board = struct {
         }
     }
 
-    pub fn reached_goal(self: *Self) bool {
+    pub fn reached_goal(self: *const Self) bool {
         const mask = switch (self.goal_orientation) {
             .Vertical => &self.vertical_mask,
             .Horizontal => &self.horizontal_mask,
@@ -379,7 +379,7 @@ pub const Board = struct {
         return mask.get(goal_field).occupied;
     }
 
-    pub fn is_legal_move(self: *Self, move: Move) bool {
+    pub fn is_legal_move(self: *const Self, move: Move) bool {
         if (move.step == 0) return false;
         if (!self.field_occupied(move.pos)) return false;
 
@@ -403,7 +403,7 @@ pub const Board = struct {
         return false;
     }
 
-    fn step_limit(self: *Self, pos: u8, dir: Direction) i8 {
+    fn step_limit(self: *const Self, pos: u8, dir: Direction) i8 {
         const o = self.car_orientation_at(pos) catch unreachable;
         const sz = self.car_size_at(pos) catch unreachable;
 
@@ -422,7 +422,7 @@ pub const Board = struct {
         return step;
     }
 
-    pub fn calculate_move_range(self: *Self, pos: u8) MoveRange {
+    pub fn calculate_move_range(self: *const Self, pos: u8) MoveRange {
         return .{
             .pos = pos,
             .min_step = self.step_limit(pos, Direction.Backward),
@@ -482,7 +482,7 @@ pub const Board = struct {
         self.do_move(reverse);
     }
 
-    pub fn car_positions(self: *Self, allocator: std.mem.Allocator) std.ArrayList(u8) {
+    pub fn car_positions(self: *const Self, allocator: std.mem.Allocator) std.ArrayList(u8) {
         var checked = std.AutoHashMap(u8, void).init(allocator);
         defer checked.deinit();
 
