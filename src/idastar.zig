@@ -11,6 +11,7 @@ const Brain = brain_m.Brain;
 const ArrayList = std.ArrayList;
 const AutoHashMap = std.AutoHashMap;
 const PriorityQueue = std.PriorityQueue;
+const Allocator = std.mem.Allocator;
 
 pub const IDAstar = struct {
     const Self = @This();
@@ -31,12 +32,12 @@ pub const IDAstar = struct {
         // (see https://www.michaelfogleman.com/rush/#HardestPuzzles)
         const depth = @intToFloat(f64, self.board.min_moves orelse 51);
 
-        return @floatToInt(usize, pow(f64, branching_factor, depth));
+        return @floatToInt(usize, std.math.pow(f64, branching_factor, depth));
     }
 
     // FIXME: We wouldnt need the context hack, if we operated on boards in the first place.
     // The move history would then need to store board states as snapshots instead of moves.
-    fn move_order(context: *Self, m1: Move, m2: Move) Order {
+    fn move_order(context: *Self, m1: Move, m2: Move) std.math.Order {
         context.board.do_move(m1);
         const a = context.brain.evaluate_board(context.board);
         context.board.undo_move(m1);

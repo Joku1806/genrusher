@@ -204,6 +204,7 @@ pub fn Tree(
         }
 
         // pub fn shrink(self: *Self) void; TODO
+        // TODO: iterator
 
         pub fn formatHelper(
             self: Self,
