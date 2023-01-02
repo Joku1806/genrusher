@@ -1,34 +1,32 @@
 - Tests für IDA* Algorithmus schreiben
 - Tests für Board Repository schreiben
 
-- Board Heuristiken implementieren
+- Board:
+	- Heuristik BlockersLowerBound implementieren
+	- Heuristik GoalDistance implementieren
+	- Heuristik Hybrid implementieren
+	- Heuristik IsMoveToSecluded implementieren
+	- Heuristik IsReleasingMove implementieren
+	- Heuristik InitialBoardDistance implementieren
+	- Heuristik NumberOfSiblings implementieren
+	- weirde Idee: "Meta-Heuristiken", die Aussagen über eigene Regeln machen
+	
+- Brain: nötige Informationen für Heuristiken hinzufügen
 
-- veränderbaren k-ary Baum implementieren oder online finden
-
-- AST implementieren
-	- veränderbaren k-ary Baum
-	- Methode is_syntactically_valid(), um zu prüfen ob Syntax valide ist
-	- Methode is_boolean_expression(), um zu prüfen ob AST ein boolescher Ausdruck ist
-	- Methode is_arithmetic_expression(), um zu prüfen ob AST ein arithmetischer Ausdruck ist
+- AST:
 	- Methode normalize(), um AST auf eine kanonische Repräsentation zu normalisieren
 		- De Morgan Gesetze, andere Äquivalenzen
 		- Constant Folding
 		- Dead Branch Elimination
 		- aufsplitten und sortieren von Terminal Values (Leaf Nodes) anhand von Hash
-	- Methode evaluate(Board), um AST auszuwerten
-
-- Brain implementieren
-	- sollte gegeben ein bestimmtes Board zurückgeben, wie viele Schritte es vermutlich noch zur Lösung braucht
-	- braucht ArrayList aus Regeln
-	- Regeln bestehen aus einer booleschen Condition und einem arithmetischen Ausdruck
-	- Regeln werden nacheinander auf Board angewendet:
-	  var result: f32 = 0.0;
-	  if (condition1(board)) result += expression1(board);
-	  if (condition2(board)) result += expression2(board);
-	  ...
-	  if (conditionn(board)) result += expressionn(board);
-	  return result;
-	- Conditions und Expressions brauchen AST
+	- es ist auch möglich zu zählen, wie oft ein Subtree zu true ausgewertet wird,
+	  um diese Analyse dynamisch während der Runtime zu machen. Subtrees, die entweder
+	  zu häufig oder wenig ausgewertet werden, können einfach entfernt werden.
+	  Das ist wahrscheinlich einfacher zu implementieren und erkennt auch Fälle,
+	  die nicht statisch eliminiert werden können (z.B. unmögliche Vergleiche mit Heuristiken).
+	- Terminals und Operators an die aus Paper anpassen
+	- Logic Operator Leaf Node Spezialfall entfernen, weil es jetzt zwei Terminals (Heuristiken) gibt,
+	  die Booleans zurückgeben.
 
 - Agent implementieren
 	- neues Problem aus BoardRepository auswählen
