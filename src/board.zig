@@ -482,15 +482,12 @@ pub const Board = struct {
     }
 
     pub fn car_positions(self: *const Self, allocator: std.mem.Allocator) std.ArrayList(u8) {
-        // FIXME: Use a bitset instead
-        var checked = std.AutoHashMap(u8, void).init(allocator);
-        defer checked.deinit();
-
+        var checked = std.StaticBitSet(max_fields).initEmpty();
         var positions = std.ArrayList(u8).init(allocator);
 
         var i: u8 = 0;
         while (i < self.size()) : (i += 1) {
-            if (checked.contains(i)) continue;
+            if (checked.isSet(i)) continue;
             if (!self.occupied(i)) continue;
             positions.append(i);
 
@@ -499,7 +496,7 @@ pub const Board = struct {
 
             var pos = i;
             while (sz > 0) : (sz -= 1) {
-                checked.put(pos, {});
+                checked.set(pos);
                 pos = self.board.offset_position(pos, 1, o);
             }
         }
