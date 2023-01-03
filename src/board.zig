@@ -59,12 +59,12 @@ const Field = packed struct {
 
 pub const Board = struct {
     const Self = @This();
+    // NOTE: It is very unlikely that we want to solve a board
+    // larger than 8x8, so the maximum number of fields is 64.
+    const max_fields: comptime_int = 64;
 
-    // TODO: check viability of ArrayBitSet
-    // NOTE: It is very unlikely that we want to solve a board larger than 8x8,
-    // so we use an array with static size of 64.
-    horizontal_mask: PackedIntArray(Field, 64),
-    vertical_mask: PackedIntArray(Field, 64),
+    horizontal_mask: PackedIntArray(Field, max_fields),
+    vertical_mask: PackedIntArray(Field, max_fields),
     width: u4,
     height: u4,
     goal_lane: u4,
@@ -74,8 +74,8 @@ pub const Board = struct {
 
     pub fn init() Self {
         return .{
-            .horizontal_mask = PackedIntArray(Field, 64).initAllTo(.{ .occupied = false }),
-            .vertical_mask = PackedIntArray(Field, 64).initAllTo(.{ .occupied = false }),
+            .horizontal_mask = PackedIntArray(Field, max_fields).initAllTo(.{ .occupied = false }),
+            .vertical_mask = PackedIntArray(Field, max_fields).initAllTo(.{ .occupied = false }),
             .width = undefined,
             .height = undefined,
             .goal_lane = undefined,
@@ -285,7 +285,7 @@ pub const Board = struct {
 
         const board_fen = text[offset..];
 
-        if (board_fen.len != self.size() or board_fen.len > 64) {
+        if (board_fen.len != self.size() or board_fen.len > max_fields) {
             return ParseError.IllegalBoardDimensions;
         }
 
