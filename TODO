@@ -5,9 +5,6 @@
 	- Heuristik BlockersLowerBound implementieren
 	- Heuristik GoalDistance implementieren
 	- Heuristik Hybrid implementieren
-	- Heuristik IsMoveToSecluded implementieren
-	- Heuristik IsReleasingMove implementieren
-	- Heuristik InitialBoardDistance implementieren
 	- Heuristik NumberOfSiblings implementieren
 	- weirde Idee: "Meta-Heuristiken", die Aussagen über eigene Regeln machen
 	
