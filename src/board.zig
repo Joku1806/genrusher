@@ -533,13 +533,39 @@ pub const Board = struct {
         return 0.0;
     }
 
+    fn intersect_ray(self: *const Self, initial_position: u8, direction: i8, orientation: Orientation) ?u8 {
+        var cpos = self.offset_position(initial_position, direction, orientation);
+        while (cpos) |p| : (cpos = self.offset_position(cpos.?, direction, orientation)) {
+            if (self.field_occupied(p)) return p;
+        }
+
+        return null;
+    }
+
     // Did the last move taken position the vehicle at a location that no other
     // vehicle can occupy?
     // FIXME: Brain needs the last move as context
     pub fn heuristic_is_move_to_secluded(self: *Self, last_move: Move) bool {
-        _ = self;
-        _ = last_move;
-        return 0.0;
+        self.undo_move(last_move);
+        defer self.do_move(last_move);
+
+        const co = self.car_orientation_at(last_move.pos) catch unreachable;
+        const target = self.offset_position(last_move.pos, last_move.step, co).?;
+
+        const directions = [2]i8{ -1, 1 };
+        const orientations = [2]Orientation{ .Vertical, .Horizontal };
+
+        for (directions) |dir| {
+            for (orientations) |o| {
+                if (self.intersect_ray(target, dir, o)) |p| {
+                    if (self.field_character_at(p) == self.field_character_at(last_move.pos)) continue;
+                    const po = self.car_orientation_at(p) catch unreachable;
+                    if (po == o) return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     // Did the last move made add new possible moves?
@@ -847,4 +873,20 @@ test "reached goal" {
     try expect(!b.reached_goal());
     b.do_move(.{ .pos = 0, .step = 1 });
     try expect(b.reached_goal());
+}
+
+test "heuristic is move to secluded" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    const secluded = .{ .pos = 23, .step = -1 };
+    b.do_move(secluded);
+    try expect(b.heuristic_is_move_to_secluded(secluded));
+    b.undo_move(secluded);
+
+    const not_secluded = .{ .pos = 9, .step = -1 };
+    b.do_move(not_secluded);
+    try expect(!b.heuristic_is_move_to_secluded(not_secluded));
+    b.undo_move(not_secluded);
 }
