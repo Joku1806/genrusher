@@ -570,9 +570,42 @@ pub const Board = struct {
 
     // Did the last move made add new possible moves?
     pub fn heuristic_is_releasing_move(self: *Self, last_move: Move) bool {
-        _ = self;
-        _ = last_move;
-        return 0.0;
+        self.undo_move(last_move);
+        defer self.do_move(last_move);
+
+        const co = self.car_orientation_at(last_move.pos) catch unreachable;
+        const opposite: Orientation = if (co == .Horizontal) .Vertical else .Horizontal;
+
+        var pos: ?u8 = last_move.pos;
+        const target = self.offset_position(last_move.pos, last_move.step, co).?;
+
+        const sign = std.math.sign(last_move.step);
+        const same_dir_check = switch (sign) {
+            1 => last_move.pos,
+            -1 => self.offset_position(last_move.pos, last_move.step + 1, co).?,
+            else => unreachable,
+        };
+
+        if (self.intersect_ray(same_dir_check, -sign, co)) |intersected| {
+            const io = self.car_orientation_at(intersected) catch unreachable;
+            if (io == co) return true;
+        }
+
+        while (pos) |p| : (pos = self.offset_position(pos.?, sign, co)) {
+            if (p == target) break;
+
+            if (self.intersect_ray(p, 1, opposite)) |intersected| {
+                const io = self.car_orientation_at(intersected) catch unreachable;
+                if (io == opposite) return true;
+            }
+
+            if (self.intersect_ray(p, -1, opposite)) |intersected| {
+                const io = self.car_orientation_at(intersected) catch unreachable;
+                if (io == opposite) return true;
+            }
+        }
+
+        return false;
     }
 
     // FIXME: Brain needs the initial board as context
@@ -889,4 +922,20 @@ test "heuristic is move to secluded" {
     b.do_move(not_secluded);
     try expect(!b.heuristic_is_move_to_secluded(not_secluded));
     b.undo_move(not_secluded);
+}
+
+test "heuristic is releasing move" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    const releasing = .{ .pos = 9, .step = -1 };
+    b.do_move(releasing);
+    try expect(b.heuristic_is_releasing_move(releasing));
+    b.undo_move(releasing);
+
+    const not_releasing = .{ .pos = 1, .step = 2 };
+    b.do_move(not_releasing);
+    try expect(!b.heuristic_is_releasing_move(not_releasing));
+    b.undo_move(not_releasing);
 }
