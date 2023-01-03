@@ -667,13 +667,13 @@ pub const Board = struct {
 
     // Original heuristic, not specified in the paper
     // Returns the number of possible moves relative to the board size.
-    pub fn heuristic_free_space(self: *const Self) f32 {
-        var positions = self.board.car_positions(self.allocator);
+    pub fn heuristic_free_space(self: *const Self, allocator: std.mem.Allocator) f32 {
+        var positions = self.car_positions(allocator);
         defer positions.deinit();
 
         var nmoves: usize = 0;
         for (positions.items) |pos| {
-            const range = self.board.calculate_move_range(pos);
+            const range = self.calculate_move_range(pos);
             if (range.min_step == range.max_step) continue;
             nmoves += std.math.absInt(range.max_step - range.min_step);
         }
