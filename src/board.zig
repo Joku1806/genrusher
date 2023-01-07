@@ -145,6 +145,7 @@ pub const Board = struct {
         return if (self.vertical_mask.get(pos).occupied) .Vertical else .Horizontal;
     }
 
+    // NOTE: could just return 0 in case of errors.
     fn car_size_at(self: *const Self, pos: u8) BoardError!usize {
         const o = try self.car_orientation_at(pos);
         var sz: usize = 0;
@@ -706,7 +707,9 @@ pub const Board = struct {
 
     // Did the last move taken position the vehicle at a location that no other
     // vehicle can occupy?
-    // FIXME: Brain needs the last move as context
+    // FIXME: Brain needs the previous move as context
+    // NOTE: Is the board this function is called on the current or the previous board?
+    // For now I assume the current board.
     pub fn heuristic_is_move_to_secluded(self: *Self, last_move: Move) bool {
         self.undo_move(last_move);
         defer self.do_move(last_move);
@@ -812,8 +815,8 @@ pub const Board = struct {
     // I would assume it is supposed to be the number of other moves that
     // were tried before this one, so essentially the ranking of this move
     // by the brain.
-    // In this case the brain would somehow need to relay this information
-    // to this function, but I don't really know how you would do that.
+    // In this case this function is not needed, the heuristic can be implemented
+    // in the brain itself.
     pub fn heuristic_number_of_siblings(self: *Self) f32 {
         _ = self;
         return 0.0;
