@@ -515,24 +515,6 @@ pub const Board = struct {
         return 0.0;
     }
 
-    // Counts each vehicles Manhattan distance from a deduced goal board
-    // containing a clear path to the goal, where all vehicles (and vehicles
-    // blocking them) have been forcibly positioned in possible locations in
-    // which they are no longer blocking the goal car
-    // NOTE: How to deduce the goal board? The paper says this part required
-    // some "complex reasoning" for doing this, but doesn't elaborate further.
-    pub fn heuristic_goal_distance(self: *Self) f32 {
-        _ = self;
-        return 0.0;
-    }
-
-    // Same as GoalDistance, but also adds number of vehicles between each
-    // car and its designated location.
-    pub fn heuristic_hybrid(self: *Self) f32 {
-        _ = self;
-        return 0.0;
-    }
-
     fn intersect_ray(self: *const Self, initial_position: u8, direction: i8, orientation: Orientation) ?u8 {
         var cpos = self.offset_position(initial_position, direction, orientation);
         while (cpos) |p| : (cpos = self.offset_position(cpos.?, direction, orientation)) {
@@ -549,6 +531,61 @@ pub const Board = struct {
         }
 
         return null;
+    }
+
+    fn lane_difference(current: *const Self, initial: *const Self, index: u4, o: Orientation) usize {
+        var diff: usize = 0;
+        var initial_needle: ?u8 = switch (o) {
+            .Vertical => initial.to_position(0, index),
+            .Horizontal => initial.to_position(index, 0),
+        };
+        var current_needle: ?u8 = switch (o) {
+            .Vertical => current.to_position(0, index),
+            .Horizontal => current.to_position(index, 0),
+        };
+        const opposite: Orientation = if (o == .Vertical) .Horizontal else .Vertical;
+
+        while (initial_needle != null and current_needle != null) {
+            initial_needle = initial.intersect_ray_ignoring_orientation(initial_needle.?, 1, o, opposite);
+            current_needle = current.intersect_ray_ignoring_orientation(current_needle.?, 1, o, opposite);
+
+            if (initial_needle != null and current_needle != null) {
+                const ival = switch (o) {
+                    .Vertical => initial.extract_row(initial_needle.?),
+                    .Horizontal => initial.extract_column(initial_needle.?),
+                };
+
+                const cval = switch (o) {
+                    .Vertical => current.extract_row(current_needle.?),
+                    .Horizontal => current.extract_column(current_needle.?),
+                };
+
+                diff += @intCast(usize, std.math.absInt(@as(i8, cval) - @as(i8, ival)) catch unreachable);
+
+                const isz = @intCast(i8, initial.car_size_at(initial_needle.?) catch unreachable);
+                const csz = @intCast(i8, current.car_size_at(current_needle.?) catch unreachable);
+                initial_needle = initial.offset_position(initial_needle.?, isz - 1, o);
+                current_needle = current.offset_position(current_needle.?, csz - 1, o);
+            }
+        }
+
+        return diff;
+    }
+
+    fn distance_to(self: *Self, other: *Self) usize {
+        var diff: usize = 0;
+
+        var col: u4 = 0;
+        while (col < self.width) : (col += 1) {
+            diff += self.lane_difference(other, col, .Vertical);
+        }
+
+        var row: u4 = 0;
+        while (row < self.height) : (row += 1) {
+            diff += self.lane_difference(other, row, .Horizontal);
+        }
+
+        return diff;
     }
 
     // Did the last move taken position the vehicle at a location that no other
@@ -617,60 +654,27 @@ pub const Board = struct {
         return false;
     }
 
-    fn lane_difference(current: *const Self, initial: *const Self, index: u4, o: Orientation) usize {
-        var diff: usize = 0;
-        var initial_needle: ?u8 = switch (o) {
-            .Vertical => initial.to_position(0, index),
-            .Horizontal => initial.to_position(index, 0),
-        };
-        var current_needle: ?u8 = switch (o) {
-            .Vertical => current.to_position(0, index),
-            .Horizontal => current.to_position(index, 0),
-        };
-        const opposite: Orientation = if (o == .Vertical) .Horizontal else .Vertical;
-
-        while (initial_needle != null and current_needle != null) {
-            initial_needle = initial.intersect_ray_ignoring_orientation(initial_needle.?, 1, o, opposite);
-            current_needle = current.intersect_ray_ignoring_orientation(current_needle.?, 1, o, opposite);
-
-            if (initial_needle != null and current_needle != null) {
-                const ival = switch (o) {
-                    .Vertical => initial.extract_row(initial_needle.?),
-                    .Horizontal => initial.extract_column(initial_needle.?),
-                };
-
-                const cval = switch (o) {
-                    .Vertical => current.extract_row(current_needle.?),
-                    .Horizontal => current.extract_column(current_needle.?),
-                };
-
-                diff += @intCast(usize, std.math.absInt(@as(i8, cval) - @as(i8, ival)) catch unreachable);
-
-                const isz = @intCast(i8, initial.car_size_at(initial_needle.?) catch unreachable);
-                const csz = @intCast(i8, current.car_size_at(current_needle.?) catch unreachable);
-                initial_needle = initial.offset_position(initial_needle.?, isz - 1, o);
-                current_needle = current.offset_position(current_needle.?, csz - 1, o);
-            }
-        }
-
-        return diff;
-    }
-
     // FIXME: Brain needs the initial board as context
     pub fn heuristic_initial_board_distance(self: *Self, initial: *Self) f32 {
-        var diff: usize = 0;
+        return @intToFloat(f32, self.distance_to(initial));
+    }
 
-        var col: u4 = 0;
-        while (col < self.width) : (col += 1) {
-            diff += self.lane_difference(initial, col, .Vertical);
-        }
+    // Counts each vehicles Manhattan distance from a deduced goal board
+    // containing a clear path to the goal, where all vehicles (and vehicles
+    // blocking them) have been forcibly positioned in possible locations in
+    // which they are no longer blocking the goal car
+    // NOTE: How to deduce the goal board? The paper says this part required
+    // some "complex reasoning" for doing this, but doesn't elaborate further.
+    pub fn heuristic_goal_board_distance(self: *Self, goal: *Self) f32 {
+        return @intToFloat(f32, self.distance_to(goal));
+    }
 
-        var row: u4 = 0;
-        while (row < self.height) : (row += 1) {
-            diff += self.lane_difference(initial, row, .Horizontal);
-        }
-
-        return @intToFloat(f32, diff);
+    // Same as GoalDistance, but also adds number of vehicles between each
+    // car and its designated location.
+    pub fn heuristic_hybrid(self: *Self, goal: *Self) f32 {
+        _ = self;
+        _ = goal;
+        return 0.0;
     }
 
     pub fn heuristic_phase_by_distance(self: *Self, initial: *Self) f32 {
