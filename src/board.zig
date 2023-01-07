@@ -43,6 +43,7 @@ const BoardError = error{
     ExpectedOccupiedField,
     PositionOutOfBounds,
     InvalidMove,
+    InvalidField,
 };
 
 const Field = packed struct {
@@ -122,6 +123,22 @@ pub const Board = struct {
         return self.vertical_mask.get(pos).occupied or self.horizontal_mask.get(pos).occupied;
     }
 
+    fn field_distance(self: *const Self, f1: u8, f2: u8) !u4 {
+        if (self.extract_row(f1) == self.extract_row(f2)) {
+            const c1 = self.extract_column(f1);
+            const c2 = self.extract_column(f2);
+            return if (c1 > c2) c1 - c2 else c2 - c1;
+        }
+
+        if (self.extract_column(f1) == self.extract_column(f2)) {
+            const r1 = self.extract_row(f1);
+            const r2 = self.extract_row(f2);
+            return if (r1 > r2) r1 - r2 else r2 - r1;
+        }
+
+        return error.InvalidField;
+    }
+
     fn car_orientation_at(self: *const Self, pos: u8) BoardError!Orientation {
         if (pos >= self.size()) return BoardError.PositionOutOfBounds;
         if (!self.field_occupied(pos)) return BoardError.ExpectedOccupiedField;
@@ -144,6 +161,21 @@ pub const Board = struct {
         }
 
         return sz;
+    }
+
+    fn car_representative_field(self: *const Self, pos: u8) u8 {
+        const o = self.car_orientation_at(pos) catch unreachable;
+
+        var cursor: ?u8 = pos;
+        var cursor_adv: ?u8 = self.offset_position(pos, -1, o);
+
+        while (cursor_adv) |c| {
+            if (!self.field_occupied(c) or self.field_character_at(c) != self.field_character_at(cursor.?)) break;
+            cursor = cursor_adv;
+            cursor_adv = self.offset_position(cursor_adv.?, -1, o);
+        }
+
+        return cursor.?;
     }
 
     fn field_character_at(self: *const Self, pos: u8) u8 {
@@ -504,17 +536,6 @@ pub const Board = struct {
         return positions;
     }
 
-    // Computes a lower-bound estimate of the number of moves required
-    // to move each vehicle out of the goal car’s path. This has to be done
-    // recursively for the vehicles blocking these vehicles, and so on. There
-    // are also some redundancy checks needed to avoid counting the same
-    // vehicle more than once. When having to choose between two possible direction
-    // of moving a vehicle, we compute both and retain the minimal value.
-    pub fn heuristic_blockers_lower_bound(self: *Self) f32 {
-        _ = self;
-        return 0.0;
-    }
-
     fn intersect_ray(self: *const Self, initial_position: u8, direction: i8, orientation: Orientation) ?u8 {
         var cpos = self.offset_position(initial_position, direction, orientation);
         while (cpos) |p| : (cpos = self.offset_position(cpos.?, direction, orientation)) {
@@ -586,6 +607,101 @@ pub const Board = struct {
         }
 
         return diff;
+    }
+
+    fn calculate_move_lower_bound(self: *const Self, move: Move, cache: *std.AutoHashMap(Move, f32)) f32 {
+        // NOTE: Check if it is really ok to return the bound for a specific
+        // move more than once. The description in the paper could be interpreted
+        // as meaning that moves should be completely ignored after the initial
+        // calculation, i.e. using a HashSet to prevent cycles and returning 0 here.
+        if (cache.get(move)) |bound| {
+            return bound;
+        }
+
+        const o = self.car_orientation_at(move.pos) catch unreachable;
+        const sz = @intCast(i8, self.car_size_at(move.pos) catch unreachable);
+
+        // NOTE: If the required move is impossible, we return Infinity to
+        // discard this branch.
+        if (self.offset_position(move.pos, move.step, o) == null) {
+            return std.math.inf_f32;
+        }
+
+        cache.put(move, 0.0) catch unreachable;
+
+        var bound: f32 = 0.0;
+        const sign = std.math.sign(move.step);
+        var current_pos = switch (sign) {
+            -1 => self.offset_position(move.pos, -1, o),
+            1 => self.offset_position(move.pos, sz, o),
+            else => unreachable,
+        };
+        const target_pos = self.offset_position(move.pos, move.step, o);
+
+        while (current_pos) |p| : (current_pos = self.offset_position(current_pos.?, sign, o)) {
+            if (!self.field_occupied(p) and p != target_pos) continue;
+
+            if (self.field_occupied(p)) {
+                const blocker_pos = self.car_representative_field(p);
+                const blocker_size = @intCast(i8, self.car_size_at(blocker_pos) catch unreachable);
+                const blocker_orientation = self.car_orientation_at(blocker_pos) catch unreachable;
+
+                if (blocker_orientation == o) {
+                    const m: Move = .{ .pos = p, .step = move.step };
+                    bound += self.calculate_move_lower_bound(m, cache);
+                    break;
+                } else {
+                    const dist = self.field_distance(blocker_pos, p) catch unreachable;
+                    const fstep: i8 = dist + 1;
+                    const bstep: i8 = -(blocker_size - fstep + 1);
+
+                    const m1: Move = .{ .pos = blocker_pos, .step = fstep };
+                    const m2: Move = .{ .pos = blocker_pos, .step = bstep };
+                    const c1 = self.calculate_move_lower_bound(m1, cache);
+                    const c2 = self.calculate_move_lower_bound(m2, cache);
+
+                    bound += std.math.min(c1, c2);
+                }
+            }
+
+            if (bound == std.math.inf_f32) break;
+            if (p == target_pos) break;
+        }
+
+        bound += 1.0;
+        cache.put(move, bound) catch unreachable;
+        return bound;
+    }
+
+    // Computes a lower-bound estimate of the number of moves required
+    // to move each vehicle out of the goal car’s path. This has to be done
+    // recursively for the vehicles blocking these vehicles, and so on. There
+    // are also some redundancy checks needed to avoid counting the same
+    // vehicle more than once. When having to choose between two possible direction
+    // of moving a vehicle, we compute both and retain the minimal value.
+    pub fn heuristic_blockers_lower_bound(self: *Self, allocator: std.mem.Allocator) f32 {
+        var cache = std.AutoHashMap(Move, f32).init(allocator);
+        defer cache.deinit();
+
+        const lpos = switch (self.goal_orientation) {
+            .Vertical => self.to_position(0, self.goal_lane),
+            .Horizontal => self.to_position(self.goal_lane, 0),
+        };
+
+        const opposite: Orientation = if (self.goal_orientation == .Vertical) .Horizontal else .Vertical;
+        const goal_car_pos = self.intersect_ray_ignoring_orientation(lpos, 1, self.goal_orientation, opposite).?;
+        const goal_car_size = self.car_size_at(goal_car_pos) catch unreachable;
+        const goal_pos = switch (self.goal_orientation) {
+            .Vertical => self.offset_position(lpos, @intCast(i8, self.height - goal_car_size), self.goal_orientation).?,
+            .Horizontal => self.offset_position(lpos, @intCast(i8, self.width - goal_car_size), self.goal_orientation).?,
+        };
+
+        var goal_move = .{
+            .pos = goal_car_pos,
+            .step = self.field_distance(goal_car_pos, goal_pos) catch unreachable,
+        };
+
+        return self.calculate_move_lower_bound(goal_move, &cache);
     }
 
     // Did the last move taken position the vehicle at a location that no other
@@ -881,6 +997,20 @@ test "car size" {
     try expectError(BoardError.PositionOutOfBounds, b.car_size_at(40));
 }
 
+test "car representative field" {
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(b.car_representative_field(23) == 23);
+    try expect(b.car_representative_field(29) == 23);
+    try expect(b.car_representative_field(35) == 23);
+
+    try expect(b.car_representative_field(32) == 32);
+    try expect(b.car_representative_field(33) == 32);
+    try expect(b.car_representative_field(34) == 32);
+}
+
 test "move car collision" {
     const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
     var b = Board.init();
@@ -1016,4 +1146,13 @@ test "heuristic initial board distance" {
     b.do_move(.{ .pos = 20, .step = 1 });
 
     try expect(b.heuristic_initial_board_distance(&initial) == 6.0);
+}
+
+test "heuristic blockers lower bound" {
+    const allocator = std.testing.allocator;
+    const text = "6:6:?:?:IBBoooIooLDDJAALooJoKEEMFFKooMGGHHHM";
+    var b = Board.init();
+    b.parse(text) catch unreachable;
+
+    try expect(b.heuristic_blockers_lower_bound(allocator) == 2.0);
 }
