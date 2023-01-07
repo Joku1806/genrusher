@@ -819,28 +819,17 @@ pub const Board = struct {
         return 0.0;
     }
 
-    // Returns the difficulty of solving the puzzle as a number in [0, 1].
-    // If a difficulty estimate (using the ratio of solves / total attempts)
-    // is known, this will be used. Otherwise, an estimated difficulty will
-    // be calculated using the estimated number of moves needed to solve the puzzle.
-    // NOTE: The first case can be wildly unreliable, if the number of attempted solves
-    // is low. Maybe there should be a single heuristic instead, which combines both cases.
+    // Returns the difficulty of solving the puzzle as a number in [0, 1],
+    // using an average of the dynamic difficulty estimate
+    // (ratio of fails / total attempts) and relative length of the
+    // solution to other puzzles. We use an average, because the first estimate
+    // itself can be wildly unreliable if the number of total attempts is low.
     pub fn heuristic_difficulty(self: *const Self) f32 {
-        if (self.relative_difficulty) |diff| return diff;
-        // NOTE: I assume a normal distribution here, so the best guess
-        // is a perfectly average puzzle ;)
-        if (self.min_moves == null) return 0.5;
+        const longest_solution_len: comptime_int = 51.0;
+        const dynamic_estimate: f32 = self.relative_difficulty orelse 0.5;
+        const length_estimate: f32 = if (self.min_moves) |n| n / longest_solution_len else 0.5;
 
-        // FIXME: Needs to be adjusted to my definition of moves
-        // as the number of fields to be crossed, instead of the
-        // flat move count, from where this number came from.
-        // NOTE: Maybe this should not be done, since the number
-        // of crossed fields has no effect on the computational
-        // difficulty of the puzzle, because we allow multi-step
-        // moves to be made. In this case, maybe the move definition
-        // should be changed?
-        const hardest_puzzle_solution_len: comptime_int = 51.0;
-        return self.min_moves.? / hardest_puzzle_solution_len;
+        return (dynamic_estimate + length_estimate) / 2.0;
     }
 
     // Original heuristic, not specified in the paper
