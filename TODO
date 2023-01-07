@@ -24,6 +24,10 @@
 	- Terminals und Operators an die aus Paper anpassen
 	- Logic Operator Leaf Node Spezialfall entfernen, weil es jetzt zwei Terminals (Heuristiken) gibt,
 	  die Booleans zurückgeben.
+	- Hit Counter für Boolean Subexpressions implementieren, kann dafür benutzt werden, nicht oft benutzte
+	  Regeln zu entfernen
+	- Weg finden, die Wichtigkeit einer Regel für eine schnelle Lösung bzw. die Genauigkeit der Regel zu messen.
+	  Kann dafür benutzt werden, bevorzugt suboptimale Regeln zu entfernen/mutieren/kombinieren.
 
 - Agent implementieren
 	- neues Problem aus BoardRepository auswählen
