@@ -582,7 +582,7 @@ pub const Board = struct {
                     .Horizontal => current.extract_column(current_needle.?),
                 };
 
-                diff += @intCast(std.math.absInt(@as(i8, cval) - @as(i8, ival)) catch unreachable);
+                diff += @abs(@as(i8, cval) - @as(i8, ival));
 
                 const isz: i8 = @intCast(initial.car_size_at(initial_needle.?) catch unreachable);
                 const csz: i8 = @intCast(current.car_size_at(current_needle.?) catch unreachable);
@@ -625,7 +625,7 @@ pub const Board = struct {
         // NOTE: If the required move is impossible, we return Infinity to
         // discard this branch.
         if (self.offset_position(move.pos, move.step, o) == null) {
-            return std.math.inf_f32;
+            return std.math.inf(f32);
         }
 
         cache.put(move, 0.0) catch unreachable;
@@ -661,11 +661,11 @@ pub const Board = struct {
                     const c1 = self.calculate_move_lower_bound(m1, cache);
                     const c2 = self.calculate_move_lower_bound(m2, cache);
 
-                    bound += std.math.min(c1, c2);
+                    bound += @min(c1, c2);
                 }
             }
 
-            if (bound == std.math.inf_f32) break;
+            if (bound == std.math.inf(f32)) break;
             if (p == target_pos) break;
         }
 
