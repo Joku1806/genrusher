@@ -30,9 +30,9 @@ pub const IDAstar = struct {
         const branching_factor = 4.0 / 3.0;
         // It takes 51 moves to solve the longest Rush Hour puzzle
         // (see https://www.michaelfogleman.com/rush/#HardestPuzzles)
-        const depth = @intToFloat(f64, self.board.min_moves orelse 51);
+        const depth: f64 = @floatFromInt(self.board.min_moves orelse 51);
 
-        return @floatToInt(usize, std.math.pow(f64, branching_factor, depth));
+        return @intFromFloat(std.math.pow(f64, branching_factor, depth));
     }
 
     // FIXME: We wouldnt need the context hack, if we operated on boards in the first place.
@@ -59,7 +59,7 @@ pub const IDAstar = struct {
             const range = self.board.calculate_move_range(pos);
             if (range.min_step == range.max_step) continue;
 
-            var i = range.min_step;
+            const i = range.min_step;
             while (i <= range.max_step) {
                 ranked_moves.add(.{ .pos = pos, .step = i });
             }

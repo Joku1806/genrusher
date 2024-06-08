@@ -95,11 +95,11 @@ pub const Board = struct {
     }
 
     fn extract_row(self: *const Self, pos: u8) u4 {
-        return @intCast(u4, pos / self.width);
+        return @intCast(pos / self.width);
     }
 
     fn extract_column(self: *const Self, pos: u8) u4 {
-        return @intCast(u4, pos % self.width);
+        return @intCast(pos % self.width);
     }
 
     fn offset_position(self: *const Self, pos: u8, step: i8, o: Orientation) ?u8 {
@@ -112,7 +112,7 @@ pub const Board = struct {
         // takes care of vertical bounds check and any other oob situations
         if (target < 0 or target >= self.size()) return null;
 
-        const clamped = @intCast(u8, target);
+        const clamped: u8 = @intCast(target);
         if (o == .Horizontal and self.extract_row(clamped) != self.extract_row(pos)) return null;
 
         return clamped;
@@ -180,7 +180,7 @@ pub const Board = struct {
     }
 
     fn field_character_at(self: *const Self, pos: u8) u8 {
-        var o = self.car_orientation_at(pos) catch return 'o';
+        const o = self.car_orientation_at(pos) catch return 'o';
 
         if (o == .Vertical and o == self.goal_orientation and self.extract_column(pos) == self.goal_lane or
             o == .Horizontal and o == self.goal_orientation and self.extract_row(pos) == self.goal_lane)
@@ -209,7 +209,7 @@ pub const Board = struct {
                 try writer.writeAll("\n");
             }
 
-            var ch = self.field_character_at(i);
+            const ch = self.field_character_at(i);
             try writer.print("{u}", .{ch});
         }
 
@@ -240,7 +240,7 @@ pub const Board = struct {
 
         var i: u8 = 0;
         while (i < self.size()) : (i += 1) {
-            var ch = self.field_character_at(i);
+            const ch = self.field_character_at(i);
             try writer.print("{u}", .{ch});
         }
 
@@ -329,8 +329,8 @@ pub const Board = struct {
         // we probably should just lookup the last vertical pattern in the current column.
         var vert_patterns: [std.math.maxInt(u4)]u1 = undefined;
 
-        for (board_fen) |c, i| {
-            if (c == 'o' or c == '.' or self.field_occupied(@intCast(u8, i))) {
+        for (board_fen, 0..) |c, i| {
+            if (c == 'o' or c == '.' or self.field_occupied(@intCast(i))) {
                 continue;
             }
 
@@ -347,7 +347,7 @@ pub const Board = struct {
             };
 
             const sz = blk: {
-                var pos: ?u8 = @intCast(u8, i);
+                var pos: ?u8 = @intCast(i);
                 var j: usize = 0;
                 while (pos) |p| : (pos = self.offset_position(pos.?, 1, o)) {
                     if (board_fen[p] != c) break;
@@ -369,8 +369,8 @@ pub const Board = struct {
                 // (depending on the orientation) and in the lane of the goal car.
                 self.goal_orientation = o;
                 self.goal_lane = switch (o) {
-                    .Vertical => self.extract_column(@intCast(u8, i)),
-                    .Horizontal => self.extract_row(@intCast(u8, i)),
+                    .Vertical => self.extract_column(@intCast(i)),
+                    .Horizontal => self.extract_row(@intCast(i)),
                 };
             }
         }
@@ -393,7 +393,7 @@ pub const Board = struct {
             goal_cars += 1;
             if (goal_cars > 1) return error.MultipleGoalCars;
             const skip = self.car_size_at(p) catch unreachable;
-            pos = self.offset_position(p, @intCast(i8, skip - 1), self.goal_orientation);
+            pos = self.offset_position(p, @intCast(skip - 1), self.goal_orientation);
         }
     }
 
@@ -419,8 +419,8 @@ pub const Board = struct {
         const sz = self.car_size_at(move.pos) catch unreachable;
 
         const sign = std.math.sign(move.step);
-        var start = switch (sign) {
-            1 => self.offset_position(move.pos, @intCast(i8, sz), o),
+        const start = switch (sign) {
+            1 => self.offset_position(move.pos, @intCast(sz), o),
             -1 => self.offset_position(move.pos, -1, o),
             else => unreachable,
         } orelse return false;
@@ -441,7 +441,7 @@ pub const Board = struct {
 
         const sign: i8 = if (dir == Direction.Forward) 1 else -1;
         var cpos = switch (dir) {
-            Direction.Forward => self.offset_position(pos, @intCast(i8, sz), o),
+            Direction.Forward => self.offset_position(pos, @intCast(sz), o),
             Direction.Backward => self.offset_position(pos, -1, o),
         };
 
@@ -484,12 +484,12 @@ pub const Board = struct {
         while (pos != target) : (pos = self.offset_position(pos, sign, o).?) {
             const source = switch (sign) {
                 1 => pos,
-                -1 => self.offset_position(pos, @intCast(i8, sz - 1), o),
+                -1 => self.offset_position(pos, @intCast(sz - 1), o),
                 else => unreachable,
             };
 
             const destination = switch (sign) {
-                1 => self.offset_position(pos, @intCast(i8, sz), o),
+                1 => self.offset_position(pos, @intCast(sz), o),
                 -1 => self.offset_position(pos, -1, o),
                 else => unreachable,
             };
@@ -582,10 +582,10 @@ pub const Board = struct {
                     .Horizontal => current.extract_column(current_needle.?),
                 };
 
-                diff += @intCast(usize, std.math.absInt(@as(i8, cval) - @as(i8, ival)) catch unreachable);
+                diff += @intCast(std.math.absInt(@as(i8, cval) - @as(i8, ival)) catch unreachable);
 
-                const isz = @intCast(i8, initial.car_size_at(initial_needle.?) catch unreachable);
-                const csz = @intCast(i8, current.car_size_at(current_needle.?) catch unreachable);
+                const isz: i8 = @intCast(initial.car_size_at(initial_needle.?) catch unreachable);
+                const csz: i8 = @intCast(current.car_size_at(current_needle.?) catch unreachable);
                 initial_needle = initial.offset_position(initial_needle.?, isz - 1, o);
                 current_needle = current.offset_position(current_needle.?, csz - 1, o);
             }
@@ -620,7 +620,7 @@ pub const Board = struct {
         }
 
         const o = self.car_orientation_at(move.pos) catch unreachable;
-        const sz = @intCast(i8, self.car_size_at(move.pos) catch unreachable);
+        const sz: i8 = @intCast(self.car_size_at(move.pos) catch unreachable);
 
         // NOTE: If the required move is impossible, we return Infinity to
         // discard this branch.
@@ -644,7 +644,7 @@ pub const Board = struct {
 
             if (self.field_occupied(p)) {
                 const blocker_pos = self.car_representative_field(p);
-                const blocker_size = @intCast(i8, self.car_size_at(blocker_pos) catch unreachable);
+                const blocker_size: i8 = @intCast(self.car_size_at(blocker_pos) catch unreachable);
                 const blocker_orientation = self.car_orientation_at(blocker_pos) catch unreachable;
 
                 if (blocker_orientation == o) {
@@ -693,11 +693,11 @@ pub const Board = struct {
         const goal_car_pos = self.intersect_ray_ignoring_orientation(lpos, 1, self.goal_orientation, opposite).?;
         const goal_car_size = self.car_size_at(goal_car_pos) catch unreachable;
         const goal_pos = switch (self.goal_orientation) {
-            .Vertical => self.offset_position(lpos, @intCast(i8, self.height - goal_car_size), self.goal_orientation).?,
-            .Horizontal => self.offset_position(lpos, @intCast(i8, self.width - goal_car_size), self.goal_orientation).?,
+            .Vertical => self.offset_position(lpos, @intCast(self.height - goal_car_size), self.goal_orientation).?,
+            .Horizontal => self.offset_position(lpos, @intCast(self.width - goal_car_size), self.goal_orientation).?,
         };
 
-        var goal_move = .{
+        const goal_move = .{
             .pos = goal_car_pos,
             .step = self.field_distance(goal_car_pos, goal_pos) catch unreachable,
         };
@@ -775,7 +775,7 @@ pub const Board = struct {
 
     // FIXME: Brain needs the initial board as context
     pub fn heuristic_initial_board_distance(self: *Self, initial: *Self) f32 {
-        return @intToFloat(f32, self.distance_to(initial));
+        return @floatFromInt(self.distance_to(initial));
     }
 
     // Counts each vehicles Manhattan distance from a deduced goal board
@@ -785,7 +785,7 @@ pub const Board = struct {
     // NOTE: How to deduce the goal board? The paper says this part required
     // some "complex reasoning" for doing this, but doesn't elaborate further.
     pub fn heuristic_goal_board_distance(self: *Self, goal: *Self) f32 {
-        return @intToFloat(f32, self.distance_to(goal));
+        return @floatFromInt(self.distance_to(goal));
     }
 
     // Same as GoalDistance, but also adds number of vehicles between each
@@ -1065,7 +1065,7 @@ test "move generation" {
     var i: isize = range.min_step;
     while (i < range.max_step) : (i += 1) {
         if (i == 0) continue;
-        try expect(b.is_legal_move(.{ .pos = 1, .step = @intCast(i8, i) }));
+        try expect(b.is_legal_move(.{ .pos = 1, .step = @intCast(i) }));
     }
 }
 

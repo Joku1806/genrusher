@@ -55,9 +55,9 @@ pub const Brain = struct {
     }
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        var prng = std.rand.DefaultPrng.init(blk: {
+        const prng = std.rand.DefaultPrng.init(blk: {
             var seed: u64 = undefined;
-            try std.os.getrandom(std.mem.asBytes(&seed));
+            try std.posix.getrandom(std.mem.asBytes(&seed));
             break :blk seed;
         });
 

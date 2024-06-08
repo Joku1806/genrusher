@@ -174,9 +174,9 @@ pub const AST = struct {
     context_board: Board,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        var prng = std.rand.DefaultPrng.init(blk: {
+        const prng = std.rand.DefaultPrng.init(blk: {
             var seed: u64 = undefined;
-            try std.os.getrandom(std.mem.asBytes(&seed));
+            try std.posix.getrandom(std.mem.asBytes(&seed));
             break :blk seed;
         });
 
@@ -207,7 +207,7 @@ pub const AST = struct {
             if (t.is_terminal()) continue;
 
             var added: ?usize = null;
-            added = for (active_keys.items) |key, i| {
+            for (active_keys.items, 0..) |key, i| {
                 const node = self.program.getNode(key) catch unreachable;
                 if (node.takes_input(t.outputs())) {
                     const a = self.program.addNode(t);
@@ -217,9 +217,10 @@ pub const AST = struct {
                     if (self.child_count_valid(key)) {
                         _ = active_keys.orderedRemove(i);
                     }
-                    break a;
+                    added = a;
+                    break;
                 }
-            };
+            }
 
             if (added == null) {
                 continue;
@@ -245,9 +246,9 @@ pub const AST = struct {
             const node = self.program.getNode(key) catch unreachable;
             if (node.is_logical_operator()) {
                 while (!self.child_count_valid(key)) {
-                    var e1 = self.program.addNode(Token.get_random_comparison_operator(&self.prng));
-                    var t1 = self.program.addNode(Token.get_random_terminal(&self.prng));
-                    var t2 = self.program.addNode(Token.get_random_terminal(&self.prng));
+                    const e1 = self.program.addNode(Token.get_random_comparison_operator(&self.prng));
+                    const t1 = self.program.addNode(Token.get_random_terminal(&self.prng));
+                    const t2 = self.program.addNode(Token.get_random_terminal(&self.prng));
 
                     try self.program.addEdgeBetween(key, e1);
                     try self.program.addEdgeBetween(e1, t1);
@@ -255,7 +256,7 @@ pub const AST = struct {
                 }
             } else {
                 while (!self.child_count_valid(key)) {
-                    var t = self.program.addNode(Token.get_random_terminal(&self.prng));
+                    const t = self.program.addNode(Token.get_random_terminal(&self.prng));
                     try self.program.addEdgeBetween(key, t);
                 }
             }
@@ -331,7 +332,7 @@ pub const AST = struct {
         defer self.allocator.free(buffer);
 
         var i: usize = 0;
-        var factor = node.branch_factor();
+        const factor = node.branch_factor();
         while (i < factor) : (i += 1) {
             buffer[i] = self.eval_helper(node.nth_child(i));
         }

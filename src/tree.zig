@@ -161,7 +161,7 @@ pub fn Tree(
             const parent_index = try self.toInternalIndex(parent);
             const child_index = try self.toInternalIndex(child);
 
-            for (self.edges.items[parent_index]) |ci, i| {
+            for (self.edges.items[parent_index], 0..) |ci, i| {
                 if (ci == child_index) {
                     _ = self.edges.items[parent_index].orderedRemove(i);
                     return;

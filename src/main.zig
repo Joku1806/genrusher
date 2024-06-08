@@ -21,9 +21,9 @@ pub fn main() anyerror!void {
     std.debug.print("Board after undoing Move: {any}\n", .{b});
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var br = try brain.Brain.init(arena.allocator());
+    const br = try brain.Brain.init(arena.allocator());
 
-    for (br.rules.items) |*rule, i| {
+    for (br.rules.items, 0..) |*rule, i| {
         std.debug.print("Rule {} has boolean condition: {}, arithmetic expression: {}\n", .{ i, rule.condition.program, rule.expression.program });
     }
 }
