@@ -26,8 +26,8 @@ pub fn Tree(
 
         // Allocator for internal containers provided by the user.
         allocator: Allocator,
-        // Represents the root node of the tree as an index into the nodes array.
-        root_index: usize,
+        // Represents the root node of the tree as an index into the nodes array. Is null if the tree does not have any nodes.
+        root_index: ?usize,
         // Holds every node ever added to the tree, even if some of them were deleted
         // in the past. This is necessary, because removal of nodes from the array would
         // require recomputing all edges and the node index map. So this is a tradeoff between
@@ -38,119 +38,177 @@ pub fn Tree(
         // remove all deleted nodes from the tree and recompute all necessary edges and maps explicitly.
         // It should be noted that all stored references to nodes are considered invalid after this operation.
         nodes: ArrayList(T),
-        // Edges are stored as internal indices in a 2D resizable array. Every node represented by an index
-        // gets their own ArrayList, which contain the other nodes, to which edges are connected. Forming cycles
-        // or other types of connections that violate tree properties are not allowed.
-        edges: ArrayList(ArrayList(usize)),
-        // Parents are stored seperately as a deduplicated inverse of the edges to speed up tree traversal and
-        // other operations.
+        // Edges are stored as internal indices in a 2D resizable array. Every node represented by an index gets its own ArrayList, which contains indices to other nodes. Forming cycles or other types of connections that violate tree properties are not allowed.
+        children_indices: ArrayList(ArrayList(usize)),
+        // Parent indices are stored seperately, so we do not have to recompute the parent of a node through the children_indices array multiple times.
         parent_indices: ArrayList(?usize),
-        // Map of actual nodes to internal indices. Using this additional layer of indirection provides a
-        // boundary between external and internal uses of nodes and makes it impossible for deleted nodes
-        // or nodes of other trees to be passed off as legitimate.
-        deleted_nodes: AutoHashMap(usize, void),
 
+        // FIXME: Also needs deinit function
         pub fn init(allocator: Allocator) Self {
             return .{
                 .allocator = allocator,
-                .root_index = 0,
+                .root_index = null,
                 .nodes = ArrayList(T).init(allocator),
-                .edges = ArrayList(ArrayList(usize)).init(allocator),
+                .children_indices = ArrayList(ArrayList(usize)).init(allocator),
                 .parent_indices = ArrayList(?usize).init(allocator),
-                .deleted_nodes = AutoHashMap(usize, void).init(allocator),
             };
         }
 
         // Converts user-supplied node to an index for internal containers.
         // Returns error.InvalidNode if the node is not part of the tree.
-        fn filterKey(self: *const Self, key: usize) !usize {
-            return if (self.deleted_nodes.contains(key) or key >= self.nodes.items.len) error.InvalidNode else key;
+        fn toInternalIndex(self: *const Self, node: *const T) !usize {
+            const len = self.nodes.items.len;
+
+            // NOTE: If there don't exist any nodes, node can't be inside it.
+            if (len == 0) {
+                return error.InvalidNode;
+            }
+
+            const start = &self.nodes.items[0];
+            const end = &self.nodes.items[len - 1];
+
+            if (@intFromPtr(node) < @intFromPtr(start) or @intFromPtr(node) > @intFromPtr(end)) {
+                return error.InvalidNode;
+            }
+
+            // NOTE: Special case, when we only have one element and are not able to calculate the size of one node for alignment.
+            if (len == 1) {
+                return if (node == start) 0 else error.InvalidNode;
+            }
+
+            const offset = @intFromPtr(node) - @intFromPtr(start);
+            // NOTE: We have to use this hack instead of @sizeOf(T) here, as @sizeOf(T) is defined as 0 for comptime types.
+            const sizeof = @intFromPtr(&self.nodes.items[1]) - @intFromPtr(start);
+            // NOTE: If the pointer is not aligned to the size of an element, it can not be part of the nodes array.
+            if (offset % sizeof != 0) {
+                return error.InvalidNode;
+            }
+
+            const index = offset / sizeof;
+            return index;
         }
 
-        // Returns the root of the tree or null if the tree is empty.
-        pub fn root(self: *const Self) ?usize {
-            if (self.nodes.items.len == 0) return null;
-            return self.root_index;
+        fn toExternalNode(self: *const Self, index: usize) *T {
+            // TODO: Check that this does not capture a pointer to the stack.
+            return &self.nodes.items[index];
         }
 
-        pub fn isRoot(self: *Self, node: *T) bool {
-            const index = try self.toInternalIndex(node) catch return false;
-            return index == self.root_index;
+        // Returns the root of the tree or null, if the tree is empty.
+        pub fn getRoot(self: *const Self) ?*T {
+            const r = self.root_index orelse return null;
+            return &self.nodes.items[r];
         }
 
-        pub fn isLeaf(self: *const Self, key: usize) bool {
-            // Not part of the tree, so automatically a leaf
-            const children = self.childCountOf(key) catch return true;
+        // Returns whether node is the root of the tree.
+        pub fn isRoot(self: *Self, node: *T) !bool {
+            const index = try self.toInternalIndex(node);
+            const r = self.root_index orelse return false;
+            return index == r;
+        }
+
+        // Returns whether node is a leaf of the tree.
+        pub fn isLeaf(self: *const Self, node: *T) !bool {
+            const children = try self.childCountOf(node);
             return children == 0;
         }
 
-        fn isDeleted(self: *const Self, node: usize) bool {
-            return self.deleted_nodes.contains(node);
+        pub fn isDeleted(self: *const Self, node: *T) !bool {
+            const index = try self.toInternalIndex(node);
+
+            return switch (self.parent_indices[index]) {
+                // NOTE: On deletion, all nodes have their parent node set to null. But this alone can not be used to check for deletion, as the root node also does not have a parent node. This is not a problem, as we store the root index separately and can differentiate between root and deleted node that way.
+                null => !self.isRoot(index),
+                // NOTE: If we have a parent node stored, then it means that the node can not be deleted.
+                _ => false,
+            };
         }
 
-        pub fn setRoot(self: *Self, key: usize) !void {
-            const index = try self.filterKey(key);
-            if (self.parent_indices.items[index] != null) return error.InvalidRoot;
-            self.root_index = index;
-        }
-
-        pub fn getNode(self: *const Self, key: usize) !T {
-            const index = try self.filterKey(key);
-            return self.nodes.items[index];
+        pub fn hasParent(self: *const Self, node: *T) !bool {
+            return !self.isRoot(node);
         }
 
         // Adds a node to the tree and returns the corresponding created entry.
-        pub fn addNode(self: *Self, node: T) usize {
+        pub fn addNode(self: *Self, node: T) *const T {
             self.nodes.append(node) catch unreachable;
             self.parent_indices.append(null) catch unreachable;
-            self.edges.append(ArrayList(usize).init(self.allocator)) catch unreachable;
+            self.children_indices.append(ArrayList(usize).init(self.allocator)) catch unreachable;
 
-            return self.nodes.items.len - 1;
+            const added = &self.nodes.items[self.nodes.items.len - 1];
+            if (self.root_index == null) {
+                // NOTE: We just added that node, so there is no way this errors out.
+                const index = self.toInternalIndex(added) catch unreachable;
+                self.root_index = index;
+            }
+
+            return added;
         }
 
-        // Removes a node from the tree by severing all edges with parent and
-        // children. They will be returned as part of a ConnectedNode struct,
-        // so the caller can decide what to do with them.
-        pub fn removeNode(self: *Self, node: *T) !ConnectedNode {
-            const parent = try self.parentOf(node);
-            const children = try self.childrenOf(node);
+        fn removeNode(self: *Self, node: *T) void {
+            const index = self.toInternalIndex(node) catch unreachable;
 
-            if (parent) |p| {
-                self.removeEdgeBetween(p, node);
+            if (self.root_index) |r| {
+                if (r == index) {
+                    self.root_index = null;
+                }
             }
 
-            for (children) |child| {
-                self.removeEdgeBetween(node, child);
+            self.parent_indices[index] = null;
+            self.children_indices.items[index].deinit();
+        }
+
+        pub fn removeSubtree(self: *Self, starting_at: *T) !struct { *T, Tree(T) } {
+            var subtree = Tree(T).init(self.allocator);
+            const sa_parent = try self.parentOf(starting_at);
+
+            var queue = ArrayList(T).init(self.allocator);
+            defer queue.deinit();
+
+            var mapping = AutoHashMap(*T, *T).init(self.allocator);
+            defer mapping.deinit();
+
+            queue.append(starting_at);
+
+            while (queue.popOrNull()) |node| {
+                const added = subtree.addNode(*node);
+                mapping.put(node, added);
+
+                const children = try self.childrenOf(node);
+                defer children.deinit();
+
+                const parent = try self.parentOf(node);
+
+                if (parent) |p| {
+                    if (mapping.get(p)) |sp| {
+                        subtree.addEdgeBetween(sp, added);
+                    }
+                }
+
+                queue.appendSlice(children.items);
+                self.removeNode(node);
             }
 
-            const index = try self.toInternalIndex(node);
-            self.parent_indices.items[index] = null;
-            self.edges.items[index].deinit();
-            self.deleted_nodes.put(node, {});
+            return .{ sa_parent, subtree };
+        }
 
-            return .{
-                .parent = parent,
-                .node = node,
-                .children = children,
-            };
+        pub fn replaceNodeWith(self: *Self, node: *T, replacement: T) !void {
+            const i = try self.toInternalIndex(node);
+            self.nodes[i] = replacement;
         }
 
         // Adds an edge between parent and child. If either parent or child
         // are not part of the tree, error.InvalidNode will be returned. If
         // both parent and child are valid nodes, but the new edge would violate
         // tree properties, error.InvalidEdge will be returned.
-        // FIXME: Doesn't actually check for cycles because lazy.
-        pub fn addEdgeBetween(self: *Self, parent_key: usize, child_key: usize) !void {
-            const parent_index = try self.filterKey(parent_key);
-            const child_index = try self.filterKey(child_key);
+        // TODO: Maybe rename parent -> from and child -> to, though I don't know if that is clearer.
+        pub fn addEdgeBetween(self: *Self, parent: *const T, child: *const T) !void {
+            const parent_index = try self.toInternalIndex(parent);
+            const child_index = try self.toInternalIndex(child);
 
+            // NOTE: Pointing to a node multiple times is not allowed.
+            // This also automatically prevents cycles from being formed.
             if (self.parent_indices.items[child_index] != null) return error.InvalidEdge;
 
-            for (self.edges.items[parent_index].items) |ci| {
-                if (ci == child_index) return error.InvalidEdge;
-            }
-
-            try self.edges.items[parent_index].append(child_index);
+            try self.children_indices.items[parent_index].append(child_index);
         }
 
         // Removes an edge between parent and child. If either parent or child
@@ -161,9 +219,10 @@ pub fn Tree(
             const parent_index = try self.toInternalIndex(parent);
             const child_index = try self.toInternalIndex(child);
 
-            for (self.edges.items[parent_index], 0..) |ci, i| {
+            for (self.children_indices.items[parent_index], 0..) |ci, i| {
                 if (ci == child_index) {
-                    _ = self.edges.items[parent_index].orderedRemove(i);
+                    // TODO: Does the order of children matter? If not, this can be a swapRemove instead. If order matters, we also need to improve the insertion behaviour, because right now we can't easily control the order children are inserted in.
+                    _ = self.children_indices.items[parent_index].orderedRemove(i);
                     return;
                 }
             }
@@ -171,50 +230,111 @@ pub fn Tree(
             return error.InvalidEdge;
         }
 
-        // Returns the parent of node or error.InvalidNode, if node is not
-        // part of the tree.
+        /// Returns the parent of node or error.InvalidNode, if node is not
+        /// part of the tree.
         pub fn parentOf(self: *Self, node: *T) !?*T {
             const index = try self.toInternalIndex(node);
-            return self.toExternalNode(self.parent_indices[index]);
+            const p_index = self.parent_indices[index] orelse return null;
+            return self.toExternalNode(p_index);
         }
 
-        // TODO: Instead of the next three functions, provide an iterator instead.
-        // Returns an array containing the children of node, or error.InvalidNode
-        // if node is not part of the tree.
-        pub fn childrenOf(self: *Self, key: usize) ![]usize {
-            const index = try self.filterKey(key);
-            return self.edges.items[index].items;
+        // Returns an array containing the children of node, or error.InvalidNode if node is not part of the tree.
+        pub fn childrenOf(self: *Self, node: *T) !ArrayList(*T) {
+            const index = try self.toInternalIndex(node);
+            const child_indices = self.children_indices.items[index];
+            const child_nodes = ArrayList(*T).init(self.allocator);
+
+            for (child_indices) |ci| {
+                child_nodes.append(self.toExternalNode(ci));
+            }
+
+            return child_nodes;
         }
 
         // Returns the number of children that node has, or error.InvalidNode
         // if node is not part of the tree.
-        pub fn childCountOf(self: *const Self, key: usize) !usize {
-            const index = try self.filterKey(key);
-            return self.edges.items[index].items.len;
+        pub fn childCountOf(self: *const Self, node: *const T) !usize {
+            const index = try self.toInternalIndex(node);
+            return self.children_indices.items[index].items.len;
         }
 
         // Returns the nth child of the node, error.InvalidNode if node is
         // not part of the tree, or error.OutOfBounds if node has < n children.
-        pub fn nthChild(self: *const Self, key: usize, n: usize) !usize {
-            const children = try self.childCountOf(key);
+        pub fn nthChild(self: *const Self, node: *T, n: usize) !*T {
+            const children = try self.childCountOf(node);
             if (n > children) return error.OutOfBounds;
 
-            const index = try self.filterKey(key);
-            return self.edges.items[index].items[n];
+            const index = try self.toInternalIndex(node);
+            return self.toExternalNode(self.children_indices.items[index].items[n]);
         }
 
-        // pub fn shrink(self: *Self) void; TODO
-        // TODO: iterator
+        fn firstNondeletedAfter(self: *const Self, index: usize) ?*T {
+            for (index..self.nodes.items.len) |i| {
+                const node = self.getNthNode(i) catch unreachable;
+                if (!self.isDeleted(node)) {
+                    return node;
+                }
+            }
+
+            return null;
+        }
+
+        fn swapNodes(self: *Self, a: *T, b: *T) void {
+            const a_i = self.toInternalIndex(a) catch unreachable;
+            const b_i = self.toInternalIndex(b) catch unreachable;
+
+            const a_parent = self.parent_indices.items[a_i];
+            const b_parent = self.parent_indices.items[b_i];
+
+            const a_children = self.children_indices.items[a_i];
+            const b_children = self.children_indices.items[b_i];
+
+            self.parent_indices.items[b_i] = a_parent;
+            self.parent_indices.items[a_i] = b_parent;
+
+            self.children_indices.items[b_i] = a_children;
+            self.children_indices.items[a_i] = b_children;
+
+            self.nodes.items[b_i] = a.*;
+            self.nodes.items[a_i] = b.*;
+        }
+
+        pub fn shrink(self: *Self) void {
+            const deletion_start = blk: for (0..self.nodes.items.len) |i| {
+                const node = self.getNthNode(i) catch unreachable;
+                if (self.isDeleted(node)) {
+                    // NOTE: If there are only deleted nodes after this, we are done and should move to cleanup.
+                    const replacement = self.firstNondeletedAfter(i) orelse break :blk i;
+
+                    self.swapNodes(node, replacement);
+                }
+            } else {
+                break :blk null;
+            };
+
+            if (deletion_start) |d| {
+                self.nodes.shrinkAndFree(d);
+                self.children_indices.shrinkAndFree(d);
+                self.parent_indices.shrinkAndFree(d);
+            }
+        }
+
+        pub fn getNthNode(self: *const Self, n: usize) !*T {
+            if (n >= self.nodes.items.len) {
+                return error.InvalidIndex;
+            }
+
+            return self.nodes.items[n];
+        }
 
         pub fn formatHelper(
             self: Self,
-            key: usize,
+            node: *T,
             comptime fmt: []const u8,
             options: std.fmt.FormatOptions,
             writer: anytype,
         ) !void {
-            const node = self.getNode(key) catch unreachable;
-            if (self.isLeaf(key)) {
+            if (self.isLeaf(node) catch unreachable) {
                 try node.format(fmt, options, writer);
                 return;
             }
@@ -223,10 +343,10 @@ pub fn Tree(
             try node.format(fmt, options, writer);
 
             var i: usize = 0;
-            const children = self.childCountOf(key) catch unreachable;
+            const children = self.childCountOf(node) catch unreachable;
             while (i < children) : (i += 1) {
                 try writer.writeAll(" ");
-                try self.formatHelper(self.nthChild(key, i) catch unreachable, fmt, options, writer);
+                try self.formatHelper(self.nthChild(node, i) catch unreachable, fmt, options, writer);
             }
 
             try writer.writeAll(")");
@@ -238,7 +358,7 @@ pub fn Tree(
             options: std.fmt.FormatOptions,
             writer: anytype,
         ) !void {
-            if (self.root()) |r| {
+            if (self.getRoot()) |r| {
                 try self.formatHelper(r, fmt, options, writer);
             } else {
                 try writer.writeAll("empty");

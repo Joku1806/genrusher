@@ -5,6 +5,7 @@ const Board = board_m.Board;
 
 const AST_m = @import("AST.zig");
 const AST = AST_m.AST;
+const Token = AST_m.Token;
 
 const Rule = struct {
     const Self = @This();

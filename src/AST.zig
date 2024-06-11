@@ -13,7 +13,7 @@ const EvaluationResult = union(enum) {
     number: f32,
 };
 
-const Token = union(enum) {
+pub const Token = union(enum) {
     OpPlus: void,
     OpMinus: void,
     OpLt: void,
@@ -188,34 +188,36 @@ pub const AST = struct {
         };
     }
 
-    fn child_count_valid(self: *Self, key: usize) bool {
-        const children = self.program.childCountOf(key) catch unreachable;
-        const node = self.program.getNode(key) catch unreachable;
-        return node.arity() == children;
+    pub fn iterator(self: *Self) ASTIterator {
+        return ASTIterator.init(self.program, self.allocator);
+    }
+
+    fn child_count_valid(self: *Self, token: *const Token) bool {
+        const children = self.program.childCountOf(token) catch unreachable;
+        return token.arity() == children;
     }
 
     fn complete_random_tree(self: *Self, node_bound: usize) !void {
         var nodes_created: usize = 0;
         var terminals_needed: usize = 0;
-        var active_keys = std.ArrayList(usize).init(self.allocator);
-        defer active_keys.deinit();
+        var active_nodes = std.ArrayList(*const Token).init(self.allocator);
+        defer active_nodes.deinit();
 
-        try active_keys.append(self.program.root().?);
+        try active_nodes.append(self.program.getRoot().?);
 
         while (nodes_created < node_bound - terminals_needed) {
             const t = Token.get_random_token(&self.prng);
             if (t.is_terminal()) continue;
 
-            var added: ?usize = null;
-            for (active_keys.items, 0..) |key, i| {
-                const node = self.program.getNode(key) catch unreachable;
+            var added: ?*const Token = null;
+            for (active_nodes.items, 0..) |node, i| {
                 if (node.takes_input(t.outputs())) {
                     const a = self.program.addNode(t);
-                    try self.program.addEdgeBetween(key, a);
+                    try self.program.addEdgeBetween(node, a);
                     // TODO: Check if this causes problems inside the loop.
                     // Although we break right after, so maybe not.
-                    if (self.child_count_valid(key)) {
-                        _ = active_keys.orderedRemove(i);
+                    if (self.child_count_valid(node)) {
+                        _ = active_nodes.orderedRemove(i);
                     }
                     added = a;
                     break;
@@ -227,37 +229,35 @@ pub const AST = struct {
             }
 
             nodes_created += 1;
-            try active_keys.append(added.?);
+            try active_nodes.append(added.?);
 
             // NOTE: There is no guarantee that nodes_created + terminals_needed <= node_bound.
             // Because of this, node_bound is a lower bound that may be crossed by a
             // small number of nodes.
             terminals_needed = 0;
-            for (active_keys.items) |key| {
-                const node = self.program.getNode(key) catch unreachable;
-                const children = self.program.childCountOf(key) catch unreachable;
-                terminals_needed += node.arity() - children;
+            for (active_nodes.items) |token| {
+                const children = self.program.childCountOf(token) catch unreachable;
+                terminals_needed += token.arity() - children;
             }
         }
 
-        for (active_keys.items) |key| {
+        for (active_nodes.items) |token| {
             // NOTE: Right now, there is no terminal that outputs a boolean. That means
             // that logical operators are not allowed to be leaves after the end of the first while loop.
-            const node = self.program.getNode(key) catch unreachable;
-            if (node.is_logical_operator()) {
-                while (!self.child_count_valid(key)) {
+            if (token.is_logical_operator()) {
+                while (!self.child_count_valid(token)) {
                     const e1 = self.program.addNode(Token.get_random_comparison_operator(&self.prng));
                     const t1 = self.program.addNode(Token.get_random_terminal(&self.prng));
                     const t2 = self.program.addNode(Token.get_random_terminal(&self.prng));
 
-                    try self.program.addEdgeBetween(key, e1);
+                    try self.program.addEdgeBetween(token, e1);
                     try self.program.addEdgeBetween(e1, t1);
                     try self.program.addEdgeBetween(e1, t2);
                 }
             } else {
-                while (!self.child_count_valid(key)) {
+                while (!self.child_count_valid(token)) {
                     const t = self.program.addNode(Token.get_random_terminal(&self.prng));
-                    try self.program.addEdgeBetween(key, t);
+                    try self.program.addEdgeBetween(token, t);
                 }
             }
         }
@@ -271,15 +271,13 @@ pub const AST = struct {
             }
         };
 
-        const added = self.program.addNode(start);
-        try self.program.setRoot(added);
+        _ = self.program.addNode(start);
         try self.complete_random_tree(node_count - 1);
     }
 
     pub fn set_random_arithmetic_expression(self: *Self, node_count: usize) !void {
         const start = Token.get_random_arithmetic_operator(&self.prng);
-        const added = self.program.addNode(start);
-        try self.program.setRoot(added);
+        _ = self.program.addNode(start);
         try self.complete_random_tree(node_count - 1);
     }
 
@@ -316,11 +314,11 @@ pub const AST = struct {
     }
 
     pub fn is_boolean_expression(self: *Self) bool {
-        return self.be_helper(&self.program.root);
+        return self.be_helper(&self.program.getRoot);
     }
 
     pub fn is_arithmetic_expression(self: *Self) bool {
-        return self.ae_helper(&self.program.root);
+        return self.ae_helper(&self.program.getRoot);
     }
 
     pub fn normalize(self: *Self) void {
@@ -357,7 +355,7 @@ pub const AST = struct {
 
     pub fn evaluate(self: *Self, board: *Board) EvaluationResult {
         self.context_board = board;
-        const res = self.eval_helper(self.program.root);
+        const res = self.eval_helper(self.program.getRoot);
         self.context_board = undefined;
 
         return res;
