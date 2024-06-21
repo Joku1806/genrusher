@@ -188,8 +188,12 @@ pub const AST = struct {
         };
     }
 
-    pub fn iterator(self: *Self) ASTIterator {
-        return ASTIterator.init(self.program, self.allocator);
+    pub fn iterator(self: *Self, start_index: usize) Tree(Token).Iterator {
+        return self.program.iterator(start_index);
+    }
+
+    pub fn constIterator(self: *Self, start_index: usize) Tree(Token).ConstIterator {
+        return self.program.constIterator(start_index);
     }
 
     fn child_count_valid(self: *Self, token: *const Token) bool {
@@ -212,7 +216,7 @@ pub const AST = struct {
             var added: ?*const Token = null;
             for (active_nodes.items, 0..) |node, i| {
                 if (node.takes_input(t.outputs())) {
-                    const a = self.program.addNode(t);
+                    const a = try self.program.addNode(t);
                     try self.program.addEdgeBetween(node, a);
                     // TODO: Check if this causes problems inside the loop.
                     // Although we break right after, so maybe not.
@@ -246,9 +250,9 @@ pub const AST = struct {
             // that logical operators are not allowed to be leaves after the end of the first while loop.
             if (token.is_logical_operator()) {
                 while (!self.child_count_valid(token)) {
-                    const e1 = self.program.addNode(Token.get_random_comparison_operator(&self.prng));
-                    const t1 = self.program.addNode(Token.get_random_terminal(&self.prng));
-                    const t2 = self.program.addNode(Token.get_random_terminal(&self.prng));
+                    const e1 = try self.program.addNode(Token.get_random_comparison_operator(&self.prng));
+                    const t1 = try self.program.addNode(Token.get_random_terminal(&self.prng));
+                    const t2 = try self.program.addNode(Token.get_random_terminal(&self.prng));
 
                     try self.program.addEdgeBetween(token, e1);
                     try self.program.addEdgeBetween(e1, t1);
@@ -256,7 +260,7 @@ pub const AST = struct {
                 }
             } else {
                 while (!self.child_count_valid(token)) {
-                    const t = self.program.addNode(Token.get_random_terminal(&self.prng));
+                    const t = try self.program.addNode(Token.get_random_terminal(&self.prng));
                     try self.program.addEdgeBetween(token, t);
                 }
             }
@@ -271,13 +275,13 @@ pub const AST = struct {
             }
         };
 
-        _ = self.program.addNode(start);
+        _ = try self.program.addNode(start);
         try self.complete_random_tree(node_count - 1);
     }
 
     pub fn set_random_arithmetic_expression(self: *Self, node_count: usize) !void {
         const start = Token.get_random_arithmetic_operator(&self.prng);
-        _ = self.program.addNode(start);
+        _ = try self.program.addNode(start);
         try self.complete_random_tree(node_count - 1);
     }
 
@@ -314,11 +318,13 @@ pub const AST = struct {
     }
 
     pub fn is_boolean_expression(self: *Self) bool {
-        return self.be_helper(&self.program.getRoot);
+        const root = self.program.getRoot() orelse return false;
+        return self.be_helper(root);
     }
 
     pub fn is_arithmetic_expression(self: *Self) bool {
-        return self.ae_helper(&self.program.getRoot);
+        const root = self.program.getRoot() orelse return false;
+        return self.ae_helper(root);
     }
 
     pub fn normalize(self: *Self) void {
@@ -355,7 +361,9 @@ pub const AST = struct {
 
     pub fn evaluate(self: *Self, board: *Board) EvaluationResult {
         self.context_board = board;
-        const res = self.eval_helper(self.program.getRoot);
+        // FIXME: Explicitly disallow empty programs
+        const root = self.program.getRoot() orelse unreachable;
+        const res = self.eval_helper(root);
         self.context_board = undefined;
 
         return res;
